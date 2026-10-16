@@ -1,7 +1,7 @@
-# Animals tracked right now: every six hours, fetch new GPS fixes from Movebank and publish them to the
-# live-data branch, which the page reads (js/app.js). With the repository secrets MOVEBANK_USER and
-# MOVEBANK_PASS it reads the studies open to that account; without them, or while Movebank refuses the account,
-# the studies open to everyone.
+# Animals tracked right now: every six hours, fetch new GPS fixes from Movebank and publish them, with a photo of
+# each species from Wikimedia Commons, to the live-data branch, which the page reads (js/app.js). With the
+# repository secrets MOVEBANK_USER and MOVEBANK_PASS it reads the studies open to that account; without them, or
+# while Movebank refuses the account, the studies open to everyone.
 name: Live animals
 
 on:
@@ -30,6 +30,8 @@ jobs:
           mkdir -p live
           if git fetch --depth=1 origin live-data; then
             git show FETCH_HEAD:state.json > live/state.json || rm -f live/state.json
+            # the species photos downloaded before
+            git archive FETCH_HEAD photos 2>/dev/null | tar -x -C live 2>/dev/null || true
           fi
 
       - name: Natural Earth place names
@@ -64,7 +66,7 @@ jobs:
           git init -q -b live-data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md live.json state.json log.txt
+          git add -A
           git commit -qm "Live animals $(date -u +%Y-%m-%dT%H:%MZ)"
           # one commit, replaced every run: the branch holds the latest data, not its history
           git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" live-data

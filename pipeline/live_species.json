@@ -1,98 +1,47 @@
 {
  "Larus argentatus": {
-  "ko": "재갈매기",
-  "look": "gull"
+  "ko": "재갈매기"
  },
  "Larus fuscus": {
-  "ko": "줄무늬노랑발갈매기",
-  "look": "gull"
- },
- "Larus armenicus": {
-  "look": "gull"
- },
- "Ichthyaetus melanocephalus": {
-  "look": "gull"
+  "ko": "줄무늬노랑발갈매기"
  },
  "Chroicocephalus ridibundus": {
-  "ko": "붉은부리갈매기",
-  "look": "gull"
+  "ko": "붉은부리갈매기"
  },
  "Ciconia ciconia": {
-  "ko": "홍부리황새",
-  "look": "stork"
+  "ko": "홍부리황새"
  },
  "Ciconia nigra": {
-  "ko": "먹황새",
-  "look": "stork"
+  "ko": "먹황새"
  },
  "Platalea leucorodia": {
-  "ko": "노랑부리저어새",
-  "look": "spoonbill"
+  "ko": "노랑부리저어새"
  },
  "Numenius arquata": {
-  "ko": "마도요",
-  "look": "curlew"
+  "ko": "마도요"
  },
  "Haliaeetus leucocephalus": {
-  "ko": "흰머리수리",
-  "look": "eagle"
+  "ko": "흰머리수리"
  },
  "Haliaeetus albicilla": {
-  "ko": "흰꼬리수리",
-  "look": "hawk"
+  "ko": "흰꼬리수리"
  },
  "Aquila chrysaetos": {
-  "ko": "검독수리",
-  "look": "hawk"
- },
- "Cathartes aura": {
-  "look": "vulture"
- },
- "Coragyps atratus": {
-  "look": "vulture"
- },
- "Gyps fulvus": {
-  "look": "griffon"
- },
- "Buteo platypterus": {
-  "look": "hawk"
- },
- "Buteo buteo": {
-  "look": "hawk"
- },
- "Circus aeruginosus": {
-  "look": "hawk"
- },
- "Circus pygargus": {
-  "look": "hawk"
- },
- "Pernis apivorus": {
-  "look": "hawk"
+  "ko": "검독수리"
  },
  "Falco tinnunculus": {
-  "ko": "황조롱이",
-  "look": "hawk"
- },
- "Falco naumanni": {
-  "look": "hawk"
+  "ko": "황조롱이"
  },
  "Accipiter gentilis": {
-  "ko": "참매",
-  "look": "hawk"
- },
- "Milvus milvus": {
-  "look": "hawk"
+  "ko": "참매"
  },
  "Milvus migrans": {
-  "ko": "솔개",
-  "look": "hawk"
+  "ko": "솔개"
  },
  "Asio otus": {
-  "ko": "칡부엉이",
-  "look": "hawk"
+  "ko": "칡부엉이"
  },
  "Asio flammeus": {
-  "ko": "쇠부엉이",
-  "look": "hawk"
+  "ko": "쇠부엉이"
  }
 }

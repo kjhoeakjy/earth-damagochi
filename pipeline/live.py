@@ -8,13 +8,17 @@ others stay in the file a while for anyone who adopted them. GitHub Actions runs
 (.github/workflows/live.yml). A state file carries each animal's track from run to run, so later runs download
 only the new fixes.
 
+It also keeps one photo of each species (of these animals and of the past records in js/core.js) from Wikimedia
+Commons, with its author and licence, in photos/ next to the output file.
+
     MOVEBANK_USER=... MOVEBANK_PASS=... python3 pipeline/live.py --ne <Natural Earth dir> \\
         --state live/state.json --out live/live.json
 
 A study that asks users to accept licence terms is skipped, and its terms are kept under "needsLicense" in the
 state file, until its id and the md5 of those terms are added to pipeline/live_licenses.json.
 """
-import argparse, base64, csv, hashlib, http.cookiejar, io, json, os, re, sys, time, urllib.error, urllib.parse
+import argparse, base64, csv, hashlib, html, http.cookiejar, io, json, os, re, sys, time, urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -206,18 +210,24 @@ def listed(a, now_s):
 MARINE_MAMMALS = {"Phocidae", "Otariidae", "Odobenidae", "Balaenidae", "Balaenopteridae", "Eschrichtiidae",
                   "Delphinidae", "Monodontidae", "Phocoenidae", "Physeteridae", "Kogiidae", "Ziphiidae",
                   "Trichechidae", "Dugongidae"}
-LOOK = {"bird": "gull", "sea": "eseal", "fish": "turtle", "land": "caribou"}
-MOVE = {"bird": "fly", "sea": "swim", "fish": "swim", "land": "walk"}
 IUCN_EN = {"least concern": "LC", "near threatened": "NT", "vulnerable": "VU", "endangered": "EN",
            "critically endangered": "CR", "extinct in the wild": "EW", "data deficient": "DD"}
 
 
+UA = "nabiya-live/1 (https://github.com/kjhoeakjy/earth-damagochi)"
+SPARQL = "https://query.wikidata.org/sparql"
+
+
 def http_json(url):
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "nabiya-live/1 (https://github.com/kjhoeakjy/earth-damagochi)",
-        "Accept": "application/sparql-results+json, application/json"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA,
+                                               "Accept": "application/sparql-results+json, application/json"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.loads(r.read())
+
+
+def strip_html(s):
+    """The text of a bit of HTML (Commons credits, Movebank citations)."""
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", s or "")).split())
 
 
 def lookup_species(sci, curated, net=True):
@@ -238,7 +248,7 @@ def lookup_species(sci, curated, net=True):
              'OPTIONAL { ?i wdt:P1843 ?en FILTER(LANG(?en) = "en") } '
              'OPTIONAL { ?i wdt:P141 ?s . ?s rdfs:label ?st FILTER(LANG(?st) = "en") } } LIMIT 10') % sci.replace('"', "")
         try:
-            rows = http_json("https://query.wikidata.org/sparql?" + urllib.parse.urlencode(
+            rows = http_json(SPARQL + "?" + urllib.parse.urlencode(
                 {"query": q, "format": "json"}))["results"]["bindings"]
             for key in ("ko", "kol", "kow"):
                 for r in rows:
@@ -258,9 +268,121 @@ def lookup_species(sci, curated, net=True):
         s["cls"] = ("bird" if c == "Aves" else "sea" if c == "Mammalia" and tx.get("family") in MARINE_MAMMALS
                     else "fish" if c in ("Actinopterygii", "Elasmobranchii") or tx.get("family") in (
                         "Cheloniidae", "Dermochelyidae") else "land")
-    s.setdefault("look", LOOK[s["cls"]])
-    s.setdefault("move", MOVE[s["cls"]])
     return s
+
+
+# --------------------------------------------------------------------------
+# Photos: a photo of each species from Wikimedia Commons, its Wikidata image (P18) unless live_species.json
+# names one, kept with its author and licence
+# --------------------------------------------------------------------------
+
+COMMONS_API = "https://commons.wikimedia.org/w/api.php"
+PHOTO_SIZES = {"s": 250, "l": 500}  # px wide, two of Wikimedia's standard thumbnail widths
+PHOTO_RETRY_DAYS = 30               # a species without a photo is looked up again after this long
+
+
+def species_images(names):
+    """{scientific name: Commons file name} of the Wikidata image of each name; a subspecies without one takes
+    its species' image."""
+    binomial = {n: " ".join(n.split()[:2]) for n in names}
+    ask = " ".join(json.dumps(n) for n in sorted(set(names) | set(binomial.values())))
+    q = "SELECT ?sci ?img WHERE { VALUES ?sci { %s } ?i wdt:P225 ?sci ; wdt:P18 ?img . }" % ask
+    rows = http_json(SPARQL + "?" + urllib.parse.urlencode({"query": q, "format": "json"}))["results"]["bindings"]
+    img = {}
+    for r in sorted(rows, key=lambda r: r["img"]["value"]):  # the same pick every run when there are several
+        img.setdefault(r["sci"]["value"], urllib.parse.unquote(r["img"]["value"].rsplit("/", 1)[1]))
+    return {n: img.get(n) or img.get(binomial[n]) for n in names if img.get(n) or img.get(binomial[n])}
+
+
+def commons_info(files):
+    """{file name: Commons imageinfo (thumbnail url, page, credits)}, 50 files a request."""
+    out = {}
+    for k in range(0, len(files), 50):
+        sent = {"File:" + f: f for f in files[k:k + 50]}
+        d = http_json(COMMONS_API + "?" + urllib.parse.urlencode({
+            "action": "query", "format": "json", "formatversion": 2, "redirects": 1, "prop": "imageinfo",
+            "iiprop": "url|extmetadata", "iiurlwidth": PHOTO_SIZES["l"],
+            "iiextmetadatafilter": "Artist|Credit|LicenseShortName|UsageTerms", "titles": "|".join(sent)}))["query"]
+        back = {n["to"]: n["from"] for n in d.get("normalized", []) + d.get("redirects", [])}
+        for page in d.get("pages", []):
+            t, hops = page.get("title"), 0
+            while t not in sent and t in back and hops < 4:
+                t, hops = back[t], hops + 1
+            if t in sent and page.get("imageinfo"):
+                out[sent[t]] = page["imageinfo"][0]
+    return out
+
+
+def download(url, path):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        kind, body = r.headers.get("Content-Type", ""), r.read(4_000_001)
+    if not kind.startswith("image/") or len(body) > 4_000_000:
+        raise ValueError(f"not a photo ({kind}, {len(body)} bytes)")
+    path.write_bytes(body)
+
+
+def update_photos(state, names, curated, folder, now_s):
+    """Photos of these species in folder/photos, recorded in state["photos"]; files stay from run to run."""
+    photos = state.setdefault("photos", {})
+    want = lambda n: (curated.get(n, {}).get("photo") or "").removeprefix("File:")
+
+    def needs(n):
+        p = photos.get(n)
+        if not p or (want(n) and want(n) != p.get("file", p.get("tried"))):
+            return True
+        if not p.get("file"):
+            return p.get("checked", 0) < now_s - PHOTO_RETRY_DAYS * 86400
+        return not all((folder / p.get(k, "-")).exists() for k in PHOTO_SIZES)
+
+    todo = [n for n in sorted(names) if needs(n)]
+    if not todo:
+        return
+    try:
+        files = {n: want(n) for n in todo if want(n)}
+        if len(files) < len(todo):
+            files.update(species_images([n for n in todo if n not in files]))
+        info = commons_info(sorted(set(files.values())))
+    except Exception as e:  # the next run asks again
+        print(f"photo lookup failed: {e!r}", file=sys.stderr)
+        return
+    (folder / "photos").mkdir(parents=True, exist_ok=True)
+    here = lambda p: p.get("file") and all((folder / p.get(k, "-")).exists() for k in PHOTO_SIZES)
+    done = {p["file"]: p for p in photos.values() if here(p)}
+    for n in todo:
+        f = files.get(n)
+        i = info.get(f) if f else None
+        if not i:
+            photos[n] = {"checked": now_s, **({"tried": f} if f else {})}
+            print(f"  {n}: no photo on Wikidata or Commons", file=sys.stderr)
+            continue
+        meta = {k: strip_html(str(v.get("value") or "")) for k, v in i.get("extmetadata", {}).items()}
+        by = meta.get("Artist") or meta.get("Credit") or ""
+        rec = {"file": f, "page": i.get("descriptionurl") or "", "by": by if len(by) <= 80 else by[:79] + "…",
+               "lic": meta.get("LicenseShortName") or meta.get("UsageTerms") or "", "checked": now_s}
+        if f in done:  # the same photo as another species (a subspecies), already here
+            photos[n] = {**rec, **{k: done[f][k] for k in PHOTO_SIZES}}
+            continue
+        try:
+            big = i.get("thumburl") or i["url"]
+            for k, w in PHOTO_SIZES.items():
+                url = re.sub(r"([/-])%dpx-" % PHOTO_SIZES["l"], r"\g<1>%dpx-" % w, big, count=1)
+                rel = f"photos/{re.sub(r'[^a-z0-9]+', '-', n.lower()).strip('-')}-{w}"
+                rel += Path(urllib.parse.urlparse(url).path).suffix.lower() or ".jpg"
+                download(url, folder / rel)
+                rec[k] = rel
+                time.sleep(0.3)
+        except Exception as e:  # keep what was there; the next run tries again
+            print(f"  {n}: photo download failed: {e!r}", file=sys.stderr)
+            continue
+        photos[n] = done[f] = rec
+        print(f"  {n}: photo {f} by {rec['by'] or '?'} ({rec['lic'] or '?'})", file=sys.stderr)
+
+
+def past_species():
+    """The scientific names of the species of the past records (js/core.js SPECIES)."""
+    core = HERE.parent / "js" / "core.js"
+    return set(re.findall(r'\bsci: "([^"]+)"', core.read_text())) if core.exists() else set()
 
 
 # --------------------------------------------------------------------------
@@ -533,7 +655,7 @@ def main():
     ap.add_argument("--api", default=API)
     ap.add_argument("--now", help="pretend it is this UTC time (tests)")
     ap.add_argument("--pause", type=float, default=1.0)
-    ap.add_argument("--no-species-lookup", action="store_true")
+    ap.add_argument("--no-species-lookup", action="store_true", help="no network lookups for species and photos")
     ap.add_argument("--licenses", type=Path, default=HERE / "live_licenses.json")
     ap.add_argument("--species", type=Path, default=HERE / "live_species.json")
     args = ap.parse_args()
@@ -642,7 +764,12 @@ def main():
                 print(f"{k}: no fix for {(now_s - a['lastT']) / 86400:.0f} days, dropped", file=sys.stderr)
                 del state["animals"][k]
 
-    # 4. records in the data/animals.json format, plus species and sources
+    # 4. a photo of each species, of these animals and of the past records
+    if not args.no_species_lookup:
+        update_photos(state, {a["taxon"] for a in state["animals"].values()} | past_species(), curated,
+                      args.out.parent, now_s)
+
+    # 5. records in the data/animals.json format, plus species, photos and sources
     lab = Labeler(args.ne)
     cache, groups = {}, {}
 
@@ -660,11 +787,13 @@ def main():
         df = pts_frame(a["pts"])
         lbl = [labels(lo, la) for lo, la in zip(df.lon.values, df.lat.values)]
         sp = "mb:" + a["taxon"]
-        species[sp] = {key: v for key, v in state["species"][a["taxon"]].items() if key not in ("taxon", "retry")}
+        species[sp] = {key: v for key, v in state["species"][a["taxon"]].items()
+                       if key not in ("taxon", "retry", "look", "move", "photo")}
+        species[sp]["en"] = (species[sp].get("en") or "").split(",")[0].strip() or None
         st = state["studies"].get(a["study"], {})
         sources["mb" + a["study"]] = {
             "title": st.get("name") or f"Movebank study {a['study']}", "who": st.get("pi") or "", "via": "Movebank",
-            "license": st.get("license") or "", "citation": st.get("citation") or "", "note": "",
+            "license": st.get("license") or "", "citation": strip_html(st.get("citation")), "note": "",
             "url": f"https://www.movebank.org/cms/webapp?gwt_fragment=page=studies,path=study{a['study']}"}
         animals.append({
             "id": k, "sp": sp, "src": "mb" + a["study"], "tag": a["local"], "home": lbl[0][0],
@@ -679,8 +808,12 @@ def main():
     places, regions, cities = lab.tables()
     for rec in animals:
         rec["home"] = places[rec["home"]][0]
+    names = {a["taxon"] for a in state["animals"].values()} | past_species()
+    photos = {n: {k: p[k] for k in ("s", "l", "by", "lic", "page")}
+              for n, p in sorted(state.get("photos", {}).items()) if n in names and p.get("file")}
     out = {"generated": now.isoformat(), "places": places, "placeGroups": [groups.get(i) for i in range(len(places))],
-           "regions": regions, "cities": cities, "sources": sources, "species": species, "animals": animals}
+           "regions": regions, "cities": cities, "sources": sources, "species": species, "photos": photos,
+           "animals": animals}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")))
     state["updated"] = now.isoformat()
@@ -688,7 +821,8 @@ def main():
     args.state.write_text(json.dumps(state, ensure_ascii=False, separators=(",", ":")))
     print(f"wrote {args.out} ({args.out.stat().st_size} bytes): {len(animals)} animals, "
           f"{sum(1 for r in animals if r['live']['listed'])} listed (alive, moving, sending now); {mb.calls} API calls; "
-          f"{len(state['needsLicense'])} studies wait for licence acceptance; {failed} studies failed",
+          f"{len(state['needsLicense'])} studies wait for licence acceptance; {failed} studies failed; "
+          f"{len(photos)} species photos",
           file=sys.stderr)
     return 1 if cands and failed == len(cands) else 0
 

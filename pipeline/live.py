@@ -458,6 +458,33 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
     return added
 
 
+def why_refused(api, mb, raw_user, raw_password):
+    """Clues for a refused account, printed without either secret."""
+    user = raw_user.strip()
+    print(f"MOVEBANK_USER has {len(user)} characters (sha256 {hashlib.sha256(user.encode()).hexdigest()[:8]})"
+          + (" and looks like an e-mail address; Movebank wants the user name" if "@" in user else ""), file=sys.stderr)
+    if raw_user != user or raw_password != raw_password.strip():
+        print("A secret had spaces or line breaks around it; they were left out.", file=sys.stderr)
+    if any(ord(c) > 127 for c in raw_password):
+        print("MOVEBANK_PASS has characters outside ASCII.", file=sys.stderr)
+    try:
+        mb.get("direct-read", {"service": "request-token"}, tries=1)
+        print("The account may ask for a token, so only the study list was refused.", file=sys.stderr)
+    except urllib.error.HTTPError as e:
+        print(f"The account is refused a token too (HTTP {e.code}).", file=sys.stderr)
+    except Exception as e:
+        print(f"Asking for a token failed ({type(e).__name__}).", file=sys.stderr)
+    # the same address without the account: if this works, Movebank turned the account down, not the address
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                f"{api.rstrip('/')}/public/json?entity_type=study&study_id=2911040",
+                headers={"User-Agent": "nabiya-live/1"}), timeout=60) as r:
+            print(f"A public request from here works (HTTP {r.status}), so check MOVEBANK_USER and MOVEBANK_PASS, "
+                  "and that the account is activated.", file=sys.stderr)
+    except Exception as e:
+        print(f"A public request from here fails too ({e!r}): Movebank may be refusing this address.", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ne", required=True, type=Path, help="Natural Earth GeoJSON folder")
@@ -471,7 +498,8 @@ def main():
     ap.add_argument("--species", type=Path, default=HERE / "live_species.json")
     args = ap.parse_args()
 
-    user, password = os.environ.get("MOVEBANK_USER"), os.environ.get("MOVEBANK_PASS")
+    raw_user, raw_password = os.environ.get("MOVEBANK_USER", ""), os.environ.get("MOVEBANK_PASS", "")
+    user, password = raw_user.strip(), raw_password.strip()
     if not user or not password:
         print("MOVEBANK_USER and MOVEBANK_PASS are not set; nothing to do.", file=sys.stderr)
         return 0
@@ -493,16 +521,7 @@ def main():
     except urllib.error.HTTPError as e:
         body = " ".join(e.read().decode("utf-8", "replace").split())[:300]
         print(f"Movebank refused the study list (HTTP {e.code}): {body!r}", file=sys.stderr)
-        # the same address without the account: if this works, Movebank turned the account down, not the address
-        try:
-            with urllib.request.urlopen(urllib.request.Request(
-                    f"{args.api.rstrip('/')}/public/json?entity_type=study&study_id=2911040",
-                    headers={"User-Agent": "nabiya-live/1"}), timeout=60) as r:
-                print(f"A public request from here works (HTTP {r.status}), so check MOVEBANK_USER and MOVEBANK_PASS, "
-                      "and that the account is activated.", file=sys.stderr)
-        except Exception as e2:
-            print(f"A public request from here fails too ({e2!r}): Movebank may be refusing this address.",
-                  file=sys.stderr)
+        why_refused(args.api, mb, raw_user, raw_password)
         return 1
     cands = []
     for r in rows:

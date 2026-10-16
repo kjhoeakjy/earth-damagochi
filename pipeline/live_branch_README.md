@@ -6,6 +6,7 @@
 - `state.json`: 다음 실행이 이어 받는 상태 (동물별 경로, 연구, 이용 조건을 기다리는 연구)
 - `log.txt`: 마지막 실행 기록
 - `photos/`: 종마다 사진 한 장 (위키미디어 공용, 작가와 라이선스는 `live.json`의 `photos`)
+- `clouds-2k.jpg`, `clouds-4k.jpg`, `clouds.json`: 지구본의 구름. `.github/workflows/clouds.yml`이 매시간 NOAA 정지 기상위성 합성 적외선 사진(GMGSI)으로 다시 그려요 (`clouds.json`의 `taken`이 찍은 때)
 
 앱의 목록에는 사흘 안에 위치를 보냈고, 연구자 기록에 죽었다는 내용이 없고, 사흘 넘게 한자리에 머물지 않은 동물만 나와요 (`live.listed`). 목록에서 빠진 동물도 입양한 사람을 위해 30일 동안 파일에 남아요. 위급(CR)·위기(EN) 종은 밀렵 위험 때문에 넣지 않아요.
 

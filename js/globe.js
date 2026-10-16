@@ -370,17 +370,40 @@ const Globe = (() => {
     p.renderOrder = -1; p.frustumCulled = false; sky.add(p);
   }
 
+  const wantBig = () => renderer.capabilities.maxTextureSize >= 4096 && Math.max(screen.width, screen.height) * dpr >= 1600 && !(navigator.connection && navigator.connection.saveData);
+  let upgraded = false;
   async function upgrade() {
-    if (!G.ok) return;
-    const big = renderer.capabilities.maxTextureSize >= 4096 && Math.max(screen.width, screen.height) * dpr >= 1600 && !(navigator.connection && navigator.connection.saveData);
-    if (!big) return;
+    if (!G.ok || !wantBig()) return;
+    upgraded = true;
     try {
-      const [day, night, clouds] = await Promise.all(["day-4k.jpg", "night-4k.jpg", "clouds-4k.jpg"].map(f => loadTex("tex/" + f)));
-      [day, night, clouds].forEach(t => prepTex(t));
-      const old = [earthU.tDay.value, earthU.tNight.value, earthU.tClouds.value];
-      earthU.tDay.value = day; earthU.tNight.value = night; earthU.tClouds.value = clouds; cloudU.tClouds.value = clouds;
+      const [day, night] = await Promise.all(["day-4k.jpg", "night-4k.jpg"].map(f => loadTex("tex/" + f)));
+      [day, night].forEach(t => prepTex(t));
+      const old = [earthU.tDay.value, earthU.tNight.value];
+      earthU.tDay.value = day; earthU.tNight.value = night;
       old.forEach(t => t.dispose());
     } catch (e) { /* keep the 2k set */ }
+    if (cloudsAsk) { if (cloudsAsk.large) setClouds(cloudsAsk.small, cloudsAsk.large); return; }
+    try { const c = prepTex(await loadTex("tex/clouds-4k.jpg")); if (cloudsAsk) c.dispose(); else swapClouds(c); } catch (e) { /* keep 2k */ }
+  }
+
+  // clouds as the satellites saw them last (the live data's clouds.json); they replace the stand-in picture
+  // and stop drifting. Same layout as the stand-in: 180°W at the left, brighter is more cloud.
+  let realClouds = null, cloudsAsk = null, cloudsReq = 0;
+  function swapClouds(t) { const old = earthU.tClouds.value; earthU.tClouds.value = cloudU.tClouds.value = t; if (old !== t) old.dispose(); }
+  async function setClouds(small, large) {
+    if (!G.ok) return false;
+    cloudsAsk = { small, large };
+    const req = ++cloudsReq;
+    for (const url of upgraded && large ? [large, small] : [small]) {
+      try {
+        const t = prepTex(await loadTex(url));
+        if (req !== cloudsReq) { t.dispose(); return false; }
+        realClouds = { small, large };
+        swapClouds(t);
+        return true;
+      } catch (e) { /* try the smaller one */ }
+    }
+    return false;
   }
 
   /* ---------- layout & camera ---------- */
@@ -658,7 +681,7 @@ const Globe = (() => {
     if (activeRibbon) { activeRibbon.u.uWidth.value = px * 4.2; activeRibbon.u.uDash.value = Math.max(2, px * 6371 * 9); }
     if (ring.visible) { const s = px * 46; ring.scale.set(s, s, s); ringU.uT.value = t; }
     if (markLL) placeMarker();
-    cloudU.uShift.value = earthU.uShift.value = (t * 0.0000045) % 1;
+    cloudU.uShift.value = earthU.uShift.value = realClouds ? 0 : (t * 0.0000045) % 1;
     if (candPts) candPts.material.uniforms.uTime.value = t;
     othersU.uTime.value = t;
     if (activeFix) activeFix.u.uSize.value = clamp(4.9 - dist * 0.55, 2.2, 4.3);
@@ -668,7 +691,7 @@ const Globe = (() => {
 
   Object.assign(G, {
     init, upgrade, layout, flyTo, goHome, zoomBy, fitPoints, setTime, showTrack, trackNow, highlight, setMarker, setHome,
-    setCandidates, candState, showCandidates, project, homeDist, distFor, setOthers, setErrorDisk,
+    setCandidates, candState, showCandidates, project, homeDist, distFor, setOthers, setErrorDisk, setClouds,
     setFollow(on, get) { followOn = on; if (get) followGet = get; },
     camDistance: () => camera ? camera.position.length() : 3,
   });

@@ -27,7 +27,7 @@
 
 - 지구본의 작은 점은 태그가 실제로 잰 위치이고, 선은 그 사이를 지구 표면의 가장 짧은 길로 이은 거예요. 기록과 기록 사이의 동물 표시는 직선으로 이어 짐작한 자리예요.
 - 나라·바다·지역·도시 이름은 Natural Earth 지도에서 좌표로 찾았어요.
-- 구름은 그날 날씨가 아니라 위성 사진 한 장이에요.
+- 구름은 NOAA 정지 기상위성 합성 적외선 사진(GMGSI)으로 매시간 다시 그려요 (`.github/workflows/clouds.yml`, `pipeline/clouds.py`). 위성이 보지 못하는 북위·남위 72도 너머는 비어 있고, 이 사진을 못 받으면 아래의 NASA 구름 사진을 써요.
 - 고도, 수온, 잠수 깊이, 심박·체온, 가속도, 날씨는 이 데이터에 없어서 보여 주지 않아요. 데이터셋마다 실제로 들어 있는 칸은 [docs/data-fields.md](docs/data-fields.md)에 정리돼 있어요.
 
 ## 동물과 데이터 출처
@@ -55,6 +55,7 @@
 
 - [three.js](https://threejs.org) r147 (MIT) — `vendor/`에 넣어 두었어요.
 - 지구 낮 사진, 구름, 지형, 바다·육지 구분: NASA 공개 이미지, npm 패키지 earth-visualization 1.1.0 (MIT)에 들어 있는 것.
+- 실시간 구름: [NOAA/NESDIS GMGSI](https://registry.opendata.aws/noaa-gmgsi/) (NOAA Open Data Dissemination, 미국 정부 공개 데이터).
 - 밤 불빛: NASA 이미지, three-globe 2.45.6 예제 (MIT)의 `earth-night.jpg`에서 불빛만 뽑아냈어요.
 - 별: [d3-celestial](https://github.com/ofrohn/d3-celestial) 0.7.35 (BSD-3)의 Hipparcos 별 목록. 은하수는 그 윤곽으로 그렸어요 (`pipeline/make_sky.py`).
 - 장소 이름: [Natural Earth](https://www.naturalearthdata.com) (퍼블릭 도메인).

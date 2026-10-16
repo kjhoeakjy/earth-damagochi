@@ -1,0 +1,52 @@
+# Clouds as they are now: every hour, draw the newest NOAA geostationary satellite mosaic (GMGSI, longwave
+# infrared) as the globe's cloud maps (pipeline/clouds.py) and publish them next to the live animals on the
+# live-data branch, which the page reads (js/app.js).
+name: Live clouds
+
+on:
+  schedule:
+    - cron: "45 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-data
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Live data so far
+        run: |
+          mkdir -p live
+          git fetch --depth=1 origin live-data
+          git archive FETCH_HEAD | tar -x -C live
+          test -f live/live.json
+
+      - name: Python
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet numpy==2.5.4 h5py==3.16.0 pillow==12.3.0
+
+      - name: Draw the clouds
+        run: .venv/bin/python pipeline/clouds.py --out live
+
+      - name: Publish to the live-data branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git show FETCH_HEAD:clouds.json 2>/dev/null | cmp -s - live/clouds.json; then echo "no newer clouds"; exit 0; fi
+          cd live
+          cp ../pipeline/live_branch_README.md README.md
+          git init -q -b live-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Live clouds $(date -u +%Y-%m-%dT%H:%MZ)"
+          # one commit, replaced every run, as in live.yml
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" live-data

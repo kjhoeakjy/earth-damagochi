@@ -328,7 +328,7 @@ function renderClock() {
   if (App.mode === "pet" && App.pet) {
     const pet = App.pet, rel = pet.mode === "live" ? (App.ended ? "실시간 기록 끝" : "실시간") : pet.mode === "sync" ? `${pet.k}년 전 오늘` : `기록 ${App.lastK + 1}일째${pet.pace > 1 ? " · " + paceKo(pet.pace) : ""}`;
     c.innerHTML = `<b>${dateKo(App.t)} ${timeKo(App.t)}</b><br>${rel}`;
-  } else c.innerHTML = `<b>${dateKoW(now)}</b> ${timeKo(now)}`;
+  } else c.innerHTML = `<b>${dateKoW(now)}</b> ${timeKo(now)}${DB.clouds ? `<br>구름 ${Story.agoKo(now - Date.parse(DB.clouds.taken))} 위성 사진` : ""}`;
 }
 let petRenderT = 0;
 function renderPet(force) {
@@ -499,7 +499,7 @@ function tabInfo() {
       ? `<p class="muted small">새 위치는 6시간마다 받아 와요. 태그가 위치를 모아서 보내기 때문에 몇 시간 늦게 보일 수 있어요.${fetched ? ` 마지막으로 받아 온 때는 ${esc(josa(fetched, "이에요/예요"))}.` : ""}</p>`
       : pet.mode === "sync" ? `<p class="muted small">몇 년 전 실제 기록을 ${pet.k}년 전 오늘에 맞춰 실제 시간으로 따라가요.</p>`
       : `<p class="muted small">몇 년 전 실제 기록을 첫 기록부터 따라가요.</p><div class="chips" id="iPace">${PACES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pet.pace === v}">${l}</button>`).join("")}</div>`}
-      <p class="faint small">지구본의 구름은 그날 날씨가 아니라 위성 사진 한 장이에요.</p></div>
+      <p class="faint small">${DB.clouds ? `지구본의 구름은 ${pet.mode === "live" ? "" : "그때가 아니라 "}${esc(Story.agoKo(Date.now() - Date.parse(DB.clouds.taken)))} 기상위성이 찍은 모습이에요. 극지방은 사진에 담기지 않아요.` : "지구본의 구름은 그날 날씨가 아니라 위성 사진 한 장이에요."}</p></div>
     <details class="sec fold"><summary>다른 기기로 옮기기</summary>
       <p class="muted small">입양 기록은 이 브라우저에만 저장돼요. 아래 코드를 다른 기기에 붙여 넣으면 옮겨져요.</p>
       <div class="field row"><input id="iCode" readonly value="${esc(Store.exportCode())}" class="code" aria-label="백업 코드"><button class="btn small" type="button" id="iCopy">복사</button></div>
@@ -618,6 +618,14 @@ const LIVE_URL = (() => {
 const LIVE_DAYS = 3;  // a fix this recent counts as tracked right now (pipeline/live.py)
 // the photos sit next to the live file
 const liveFile = rel => new URL(rel, new URL(LIVE_URL, location.href)).href;
+
+// clouds as the weather satellites saw them last: .github/workflows/clouds.yml puts them next to the live file every hour
+async function loadClouds() {
+  const c = await fetch(liveFile("clouds.json"), { cache: "no-cache" }).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!c || !c.files || !c.files.s || !Date.parse(c.taken) || (DB.clouds && DB.clouds.taken === c.taken)) return;
+  const v = "?v=" + encodeURIComponent(c.taken);
+  if (await Globe.setClouds(liveFile(c.files.s) + v, c.files.l ? liveFile(c.files.l) + v : null)) { DB.clouds = c; renderClock(); }
+}
 
 // one code per distinct row, so a place named in two files is one place
 const rowIdx = {};
@@ -776,7 +784,7 @@ async function boot() {
   if (activePet() && activePet().aid.startsWith("mb")) enterPet(); else { enterBrowse(); if (ok) Globe.flyTo(...centreOf(DB.animals), Globe.homeDist(), 10); }
   setInterval(() => { if (App.mode === "pet") tick(false); else { renderClock(); Globe.setTime(Date.now()); } }, 1000);
   renderClock();
-  if (ok) setTimeout(() => Globe.upgrade(), 1500);
+  if (ok) { loadClouds(); setInterval(loadClouds, 20 * 60000); setTimeout(() => Globe.upgrade(), 1500); }
   window.__ready = true;
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();

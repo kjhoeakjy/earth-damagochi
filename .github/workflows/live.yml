@@ -30,8 +30,9 @@ jobs:
           mkdir -p live
           if git fetch --depth=1 origin live-data; then
             git show FETCH_HEAD:state.json > live/state.json || rm -f live/state.json
-            # the species photos downloaded before
+            # the species photos downloaded before, and the clouds from clouds.yml
             git archive FETCH_HEAD photos 2>/dev/null | tar -x -C live 2>/dev/null || true
+            git archive FETCH_HEAD clouds-2k.jpg clouds-4k.jpg clouds.json 2>/dev/null | tar -x -C live 2>/dev/null || true
           fi
 
       - name: Natural Earth place names

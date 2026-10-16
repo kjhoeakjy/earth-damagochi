@@ -112,10 +112,10 @@ function sunLongitude(ms) {
 const SYNODIC = 29.530588853, NEWMOON = 947182440000;
 const moonPhase = ms => { const p = ((ms - NEWMOON) / DAY / SYNODIC) % 1; return p < 0 ? p + 1 : p; };
 function moonName(p) {
-  if (p < .034 || p > .966) return "그믐달이 지고 새 달이 시작되는 날";
-  if (Math.abs(p - .5) < .034) return "보름달이 뜨는 날";
-  if (Math.abs(p - .25) < .034) return "반달(상현달)이 뜨는 날";
-  if (Math.abs(p - .75) < .034) return "반달(하현달)이 뜨는 날";
+  if (p < .034 || p > .966) return "삭(새 달)";
+  if (Math.abs(p - .5) < .034) return "보름달";
+  if (Math.abs(p - .25) < .034) return "상현달";
+  if (Math.abs(p - .75) < .034) return "하현달";
   return null;
 }
 
@@ -173,7 +173,7 @@ const SPECIES = {
     ko: "푸른얼굴얼가니새", en: "Masked booby", sci: "Sula dactylatra", cls: "bird", iucn: "LC", look: "booby", move: "fly",
     facts: ["하늘 높은 곳에서 화살처럼 바다로 내리꽂혀 물고기를 잡아요.",
       "얼굴의 검푸른 맨살이 가면처럼 보여서 영어로 '가면 얼가니새'라고 해요.",
-      "날치를 특히 좋아해요."],
+      "날치를 즐겨 먹어요."],
   },
   albatross: {
     ko: "나그네알바트로스", en: "Wandering albatross", sci: "Diomedea exulans", cls: "bird", iucn: "VU", look: "albatross", move: "fly",
@@ -195,7 +195,7 @@ const SPECIES = {
   },
   furseal: {
     ko: "북방물개", en: "Northern fur seal", sci: "Callorhinus ursinus", cls: "sea", iucn: "VU", look: "furseal", move: "swim",
-    facts: ["새끼는 태어난 해 가을, 엄마 없이 혼자 첫 바다 여행을 떠나요. 이 친구가 바로 그 새끼예요.",
+    facts: ["새끼는 태어난 해 가을, 어미 없이 혼자 첫 바다 여행을 떠나요. 이 기록이 바로 그 첫 여행이에요.",
       "털이 아주 빽빽해서 1㎠에 4만 가닥이 넘어요. 그 털 사이 공기층이 몸을 따뜻하게 지켜요.",
       "물에 떠서 쉴 때 뒷발을 물 밖으로 들어 올리는 독특한 자세를 해요."],
   },
@@ -203,12 +203,12 @@ const SPECIES = {
     ko: "고리무늬물범", en: "Ringed seal", sci: "Pusa hispida", cls: "sea", iucn: "LC", look: "ringed", move: "swim",
     facts: ["바다가 얼면 앞발 발톱으로 얼음을 긁어 숨구멍을 여러 개 만들어 지켜요.",
       "눈 밑에 굴을 파고 그 안에서 새끼를 낳아요.",
-      "등의 회색 고리 무늬 때문에 이런 이름이 붙었어요. 북극곰이 가장 좋아하는 먹이라 늘 조심해요."],
+      "등의 회색 고리 무늬 때문에 이런 이름이 붙었어요. 북극곰의 주된 먹이예요."],
   },
   bearded: {
     ko: "턱수염물범", en: "Bearded seal", sci: "Erignathus barbatus", cls: "sea", iucn: "LC", look: "bearded", move: "swim",
     facts: ["길고 하얀 수염으로 바다 밑 진흙을 더듬어 조개와 게를 찾아요.",
-      "수컷은 물속에서 길게 떨리는 '노래'를 불러요. 몇 km 밖까지 들린대요.",
+      "수컷은 물속에서 길게 떨리는 소리를 내요. 몇 km 밖까지 들려요.",
       "얕은 바다를 좋아해서 바다얼음이 물러나면 같이 북쪽으로 따라가요."],
   },
   rightwhale: {
@@ -221,7 +221,7 @@ const SPECIES = {
     ko: "녹새치", en: "Blue marlin", sci: "Makaira nigricans", cls: "fish", iucn: "VU", look: "marlin", move: "swim",
     facts: ["창처럼 뾰족한 위턱으로 물고기 떼를 후려쳐 사냥해요.",
       "암컷이 수컷보다 훨씬 커서 몇 배나 무거워요.",
-      "이 친구의 태그는 햇빛 세기로 위치를 계산해요. 그래서 하루 한 번, 오차가 큰 추정 위치만 남아요."],
+      "이 개체의 태그는 햇빛 세기로 위치를 계산해서, 하루 한 번 오차가 큰 추정 위치만 남아요."],
   },
   turtle: {
     ko: "푸른바다거북", en: "Green turtle", sci: "Chelonia mydas", cls: "fish", iucn: "EN", look: "turtle", move: "swim",
@@ -329,7 +329,7 @@ function prepAnimal(r) {
   A.search = [A.S.ko, A.S.en, A.S.sci, A.home, A.tag, A.id, AREA[A.area], ...A.placeOrder.map(placeName)].join(" ").toLowerCase();
   A.method = A.src === "musyl_marlin" ? "light" : A.src === "shimada_turtle" ? "fastloc" : A.src.startsWith("icarus") ? "icarus" :
     /^(weimerskirch|imos_sese|nmml_fur|dfo_ringed|npi_ringed|nmml_bearded|whalenet)$/.test(A.src) ? "argos" : "gps";
-  A.loc = { light: "햇빛 세기로 계산한 위치 (하루 한 번)", fastloc: "Fastloc GPS (물 위로 나올 때)", icarus: "GPS · 국제우주정거장 ICARUS 수신", argos: "아르고스 위성 위치", gps: "GPS" }[A.method];
+  A.loc = { light: "햇빛 세기로 추정 (하루 한 번)", fastloc: "Fastloc GPS", icarus: "GPS · ICARUS", argos: "아르고스 위성", gps: "GPS" }[A.method];
   // positions too rough for speeds: light-level estimates, and the 1996 whale fixes rounded to whole degrees
   A.coarse = A.method === "light" || A.src === "whalenet";
   return A;

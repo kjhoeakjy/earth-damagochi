@@ -2,7 +2,7 @@
    Story — what each day of a record holds, from the data alone: the tag's fixes (time, place,
    accuracy), its status messages, and what follows from them by arithmetic and astronomy
    (distance, speed, day and night where the animal was, the moon). Nothing is imagined.
-   Also the adoption game around it: passport stamps, badges, visits, the owner's own notes.
+   Also what the owner does with it: passport stamps, badges, visits, their own notes.
    ============================================================ */
 const Story = (() => {
   const SEOUL = [126.98, 37.57];
@@ -60,9 +60,9 @@ const Story = (() => {
     return null;
   }
   function termNote(term, lat) {
-    if (term.deg === 0 || term.deg === 180) return "낮과 밤 길이가 거의 같아지는 때예요";
+    if (term.deg === 0 || term.deg === 180) return "낮과 밤 길이가 거의 같음";
     const longest = (term.deg === 90) === (lat >= 0);
-    return `이곳 ${lat >= 0 ? "북" : "남"}반구는 1년 중 낮이 가장 ${longest ? "길" : "짧"}아요`;
+    return `${lat >= 0 ? "북" : "남"}반구 낮이 가장 ${longest ? "긴" : "짧은"} 날`;
   }
   const moonInfo = ms => { const p = moonPhase(ms); return { p, illum: (1 - Math.cos(2 * Math.PI * p)) / 2, waxing: p < .5, name: moonName(p) }; };
 
@@ -168,53 +168,52 @@ const Story = (() => {
     const place = placeName(pl), region = regionName(rg), city = cityName(ci);
 
     // highlights
-    if (x.first) hl.push(["tag", `태그를 단 날이에요. 첫 위치 기록은 ${timeKo(A.T[0])}이에요.`]);
-    for (const c of x.newPl) hl.push(["stamp", x.first && c === runAt(A.pl, 0) ? `${placeName(c)}에서 기록이 시작됐어요.` : `처음으로 ${placeName(c)}에 들어왔어요. 여권에 도장이 찍혔어요.`]);
-    for (const c of x.cross) hl.push(["line", `${josa(c.name, "을/를")} 넘었어요. 앞뒤 기록으로 짐작한 시각은 ${timeKo(c.t)}쯤이에요${c.gap > 6 * HOUR ? ` (두 기록 사이 ${hm(c.gap / MIN)})` : ""}.`]);
-    if (x.far) hl.push(["pin", `출발지에서 가장 멀리 간 기록을 새로 썼어요. ${kmFmt(x.far)}km예요.`]);
-    if (x.milestone) hl.push(["route", `태그를 단 뒤 이동 거리가 ${fmt(x.milestone)}km를 넘었어요.`]);
-    if (x.backHome) hl.push(["home", "출발지 120km 안으로 돌아왔어요."]);
-    for (const m of x.st) if (m.c !== "a") hl.push(["warn", `${timeKo(m.t)}에 태그가 '${MORT[m.c]}' 상태 신호를 보냈어요.${m.c === "d" ? " 태그가 한동안 움직임을 못 느끼면 보내는 신호예요. 늘 맞지는 않아요." : ""}`]);
-    if (d.term) hl.push(["sun", `${d.term.name}이에요. ${termNote(d.term, p.lat)}.`]);
-    if (!x.fx.length && !x.first) hl.push(["none", x.partial ? "오늘은 아직 위치 기록이 오지 않았어요." : "이날은 위치 기록이 없어요. 지도의 선은 앞뒤 기록을 직선으로 이은 거예요."]);
-    if (x.last) hl.push(["end", `${timeKo(A.t1)}의 위치가 마지막 기록이에요.`]);
+    if (x.first) hl.push(["tag", `태그 부착 · 첫 기록 ${timeKo(A.T[0])}`]);
+    for (const c of x.newPl) hl.push(["stamp", x.first && c === runAt(A.pl, 0) ? `${placeName(c)}에서 기록 시작` : `${placeName(c)} 첫 진입`]);
+    for (const c of x.cross) hl.push(["line", `${c.name} 통과 · ${timeKo(c.t)}쯤${c.gap > 6 * HOUR ? ` (기록 간격 ${hm(c.gap / MIN)})` : ""}`]);
+    if (x.far) hl.push(["pin", `출발지에서 가장 먼 거리 경신 · ${kmFmt(x.far)}km`]);
+    if (x.milestone) hl.push(["route", `누적 이동 ${fmt(x.milestone)}km 넘음`]);
+    if (x.backHome) hl.push(["home", "출발지 120km 안으로 돌아옴"]);
+    for (const m of x.st) if (m.c !== "a") hl.push(["warn", `${timeKo(m.t)} 태그 상태 신호 '${MORT[m.c]}'`]);
+    if (d.term) hl.push(["sun", `${d.term.name} · ${termNote(d.term, p.lat)}`]);
+    if (!x.fx.length && !x.first) hl.push(["none", x.partial ? "오늘은 아직 위치 기록 없음" : "위치 기록 없음"]);
+    if (x.last) hl.push(["end", `마지막 기록 · ${timeKo(A.t1)}`]);
 
     // position: where the tag last measured; today, also where the map's marker stands between two fixes
     const now = x.partial && x.li >= 0 ? posAt(A, x.upto) : null, off = now ? hav(p.lon, p.lat, now.lon, now.lat) : 0;
-    if (off >= 10) rows.pos.push(["지금 추정", `마지막 기록에서 ${compass(bearing(p.lon, p.lat, now.lon, now.lat))}으로 ${kmFmt(off)}km`, "지도의 표시는 두 기록 사이를 직선으로 이어 짐작한 자리예요"]);
-    rows.pos.push([off >= 10 ? "기록된 곳" : "장소", [place, region].filter(Boolean).join(" · ") || "이름 없는 곳", city ? `가까운 도시 ${city}` : ""]);
-    rows.pos.push(["좌표", llFmt(p.lon, p.lat), x.li >= 0 ? `${A.T[x.li] < d.s ? dateKo(A.T[x.li], false) + " " : ""}${timeKo(A.T[x.li])}에 잰 위치` : ""]);
-    if (off >= 10) rows.pos.push(["출발지에서", kmFmt(hav(A.X[0], A.Y[0], now.lon, now.lat)) + "km", `지금 추정 자리 기준 · 마지막 기록 때는 ${kmFmt(x.home)}km`]);
+    if (off >= 10) rows.pos.push(["지금 추정", `마지막 기록에서 ${compass(bearing(p.lon, p.lat, now.lon, now.lat))}으로 ${kmFmt(off)}km`, "두 기록 사이를 직선으로 이어 추정"]);
+    rows.pos.push([off >= 10 ? "기록된 곳" : "장소", [place, region].filter(Boolean).join(" · ") || "이름 없는 곳", city ? `${city} 근처` : ""]);
+    rows.pos.push(["좌표", llFmt(p.lon, p.lat), x.li >= 0 ? `${A.T[x.li] < d.s ? dateKo(A.T[x.li], false) + " " : ""}${timeKo(A.T[x.li])} 측정` : ""]);
+    if (off >= 10) rows.pos.push(["출발지에서", kmFmt(hav(A.X[0], A.Y[0], now.lon, now.lat)) + "km", `마지막 기록 때 ${kmFmt(x.home)}km`]);
     else rows.pos.push(["출발지에서", kmFmt(x.home) + "km", A.home]);
-    if (x.q) rows.pos.push(["정확도", `${QUAL[x.q].kind} · ${QUAL[x.q].txt}`, x.er ? `오차 반경 ${erFmt(x.er)}` : x.fx.length > 1 ? "이날 가장 정확한 기록" : ""]);
+    if (x.q) rows.pos.push(["정확도", `${QUAL[x.q].kind} · ${QUAL[x.q].txt}`, x.er ? `오차 반경 ${erFmt(x.er)}` : ""]);
 
     // movement
     if (x.fx.length || x.km > .05) {
-      rows.move.push(["이동 거리", kmFmt(x.km) + "km", x.partial ? "지금까지, 기록 사이를 직선으로 이은 거리" : "기록 사이를 직선으로 이은 거리"]);
+      rows.move.push(["이동 거리", kmFmt(x.km) + "km", x.partial ? "지금까지" : ""]);
       const a = posAt(A, d.a), z = posAt(A, x.partial ? x.upto : d.b), disp = hav(a.lon, a.lat, z.lon, z.lat);
-      if (disp > 15) rows.move.push(["방향", `${compass(bearing(a.lon, a.lat, z.lon, z.lat))}으로 ${kmFmt(disp)}km`, "하루 처음 위치에서 끝 위치까지"]);
-      if (x.fast) rows.move.push(["가장 빠른 구간", `시속 ${fmt(x.fast.v, x.fast.v < 10 ? 1 : 0)}km`, `${timeKo(A.T[x.fast.i])}~${timeKo(A.T[x.fast.i + 1])} 두 기록 사이 평균`]);
-      if (x.meas > 1 && x.meas > x.tot * .5) rows.move.push(["해 진 뒤 이동", pct(x.night / x.meas) + "%", "8시간 안쪽으로 이어진 기록만 셌어요"]);
+      if (disp > 15) rows.move.push(["방향", `${compass(bearing(a.lon, a.lat, z.lon, z.lat))}으로 ${kmFmt(disp)}km`, ""]);
+      if (x.fast) rows.move.push(["가장 빠른 구간", `시속 ${fmt(x.fast.v, x.fast.v < 10 ? 1 : 0)}km`, `${timeKo(A.T[x.fast.i])}~${timeKo(A.T[x.fast.i + 1])} 평균`]);
+      if (x.meas > 1 && x.meas > x.tot * .5) rows.move.push(["해 진 뒤 이동", pct(x.night / x.meas) + "%", ""]);
     }
 
     // signal
-    rows.sig.push(["위치 기록", x.raw ? `${x.raw}번` : "없음", x.raw > x.fx.length ? `시각이 가까운 기록은 묶어서 지도에는 ${x.fx.length}개 지점` : ""]);
+    rows.sig.push(["위치 기록", x.raw ? `${x.raw}번` : "없음", x.raw > x.fx.length ? `지도에는 ${x.fx.length}개 지점` : ""]);
     if (x.li >= 0 && (x.partial || !x.fx.length)) rows.sig.push(["마지막 기록", agoKo(x.upto - A.T[x.li]), `${dateKo(A.T[x.li], false)} ${timeKo(A.T[x.li])}`]);
     for (const m of x.st) rows.sig.push([`태그 상태 ${timeKo(m.t)}`, `${MORT_KO[m.c]} (${MORT[m.c]})`, `배터리 ${fmt(m.v)}mV`]);
-    if (x.season) rows.sig.push(["연구자 구분", `${SEASON_KO[x.season]} 서식지`, "연구자가 위치마다 붙인 계절"]);
+    if (x.season) rows.sig.push(["연구자 표시", `${SEASON_KO[x.season]} 서식지`, ""]);
 
     // sky
     const sun = d.sun;
-    if (d.light >= 1440) rows.sky.push(["낮 길이", "24시간", "해가 지지 않는 날이에요"]);
-    else if (d.light <= 0) rows.sky.push(["낮 길이", "0시간", "해가 뜨지 않는 날이에요"]);
+    if (d.light >= 1440) rows.sky.push(["낮 길이", "24시간", "백야"]);
+    else if (d.light <= 0) rows.sky.push(["낮 길이", "0시간", "극야"]);
     else {
       const diff = d.light - d.seoul;
-      rows.sky.push(["낮 길이", hm(d.light), Math.abs(diff) >= 10 ? `서울보다 ${hm(Math.abs(diff))} ${diff > 0 ? "길어요" : "짧아요"}` : "서울과 거의 같아요"]);
-      if (sun.rise != null && sun.set != null) rows.sky.push(["해 뜸 · 해 짐", `${clock24(solarMin(sun.rise, d.lon))} · ${clock24(solarMin(sun.set, d.lon))}`, "그곳의 태양시"]);
+      rows.sky.push(["낮 길이", hm(d.light), Math.abs(diff) >= 10 ? `서울보다 ${hm(Math.abs(diff))} ${diff > 0 ? "길어요" : "짧아요"}` : "서울과 비슷"]);
+      if (sun.rise != null && sun.set != null) rows.sky.push(["해 뜸 · 해 짐", `${clock24(solarMin(sun.rise, d.lon))} · ${clock24(solarMin(sun.set, d.lon))}`, "현지 태양시"]);
     }
-    rows.sky.push(["한낮 해 높이", Math.round(sun.noonAlt) + "°", "지평선에서 잰 각도"]);
+    rows.sky.push(["한낮 해 높이", Math.round(sun.noonAlt) + "°", ""]);
     rows.sky.push(["달", `${pct(d.moon.illum)}% 밝음`, d.moon.name || (d.moon.waxing ? "차오르는 중" : "기우는 중")]);
-    if (d.term) rows.sky.push(["절기", d.term.name, `내 시간 ${dateKo(d.term.t, false)} ${timeKo(d.term.t)}쯤`]);
 
     // first day: the tagging; last day: how the record ends
     const tagRows = x.first ? tagging(A) : null;
@@ -239,17 +238,17 @@ const Story = (() => {
   }
 
   const METHOD = {
-    icarus: "태그가 GPS로 위치를 재 두었다가, 국제우주정거장이 머리 위를 지날 때 한꺼번에 보내요.",
-    gps: "태그가 GPS 위성 신호로 직접 위치를 재요.",
-    argos: "태그가 보낸 전파를 인공위성이 받아 도플러 효과로 위치를 계산해요. 등급이 높을수록 정확해요.",
-    fastloc: "물 위로 나온 짧은 순간에 GPS 신호를 잡아 계산해요. 쓴 위성이 많을수록 정확해요.",
-    light: "태그가 햇빛 세기를 재서 낮 길이로 위도를, 한낮 시각으로 경도를 계산해요. 하루 한 번이고 오차가 커요.",
+    icarus: "저장해 둔 위치를 국제우주정거장이 지나갈 때 한꺼번에 받아요.",
+    gps: "태그가 위성 신호로 직접 재요.",
+    argos: "태그의 전파를 위성이 받아 계산해요. 등급이 높을수록 정확해요.",
+    fastloc: "물 위로 나온 짧은 순간 위성 신호를 잡아 계산해요.",
+    light: "낮 길이로 위도를, 한낮 시각으로 경도를 계산해요. 오차가 커요.",
   };
   function tagging(A) {
     const r = [["첫 기록", `${dateKo(A.T[0])} ${timeKo(A.T[0])}`, llFmt(A.X[0], A.Y[0])], ["재는 방법", A.loc, METHOD[A.method]]];
-    if (A.sex || A.ageText) r.push(["개체", [A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : "", A.ageText].filter(Boolean).join(" · "), A.withCalf ? "새끼와 함께였어요" : ""]);
+    if (A.sex || A.ageText) r.push(["개체", [A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : "", A.ageText].filter(Boolean).join(" · "), A.withCalf ? "새끼 동반" : ""]);
     if (A.herd) r.push(["무리", `${A.herd[0]} 무리`, A.herd[1]]);
-    if (A.deployNote) r.push(["포획 메모", A.deployNote, "연구자가 남긴 원문"]);
+    if (A.deployNote) r.push(["포획 메모", A.deployNote, "연구자 원문"]);
     if (A.instr) r.push(["태그", `${A.instr} · PTT ${A.ptt}`, "Wildlife Computers"]);
     const s0 = A.status[0];
     if (s0) r.push(["첫 상태 신호", `${MORT_KO[s0.c]} (${MORT[s0.c]})`, `${dateKo(s0.t, false)} · 배터리 ${fmt(s0.v)}mV`]);
@@ -260,13 +259,13 @@ const Story = (() => {
     if (A.frozen) {
       const after = A.status.filter(m => m.t > A.t1), cnt = {};
       for (const m of after) cnt[m.c] = (cnt[m.c] || 0) + 1;
-      r.push(["그 뒤", `${fmt(A.frozen.days, 0)}일 동안 같은 자리 위치만 왔어요`, "그 부분은 지도에서 뺐어요. 태그가 떨어졌거나 동물이 죽었을 수 있어요."]);
+      r.push(["그 뒤", `${fmt(A.frozen.days, 0)}일 동안 같은 자리 위치만 수신`, "지도에서는 뺐어요"]);
       if (after.length) r.push(["그동안 상태 신호", `${after.length}번`, Object.keys(cnt).map(c => `${MORT[c]} ${cnt[c]}번`).join(", ")]);
     }
     const ls = A.status.filter(m => m.t <= (A.frozen ? A.frozen.until : A.t1)).pop();
     if (ls && !A.frozen) r.push(["마지막 상태 신호", `${MORT_KO[ls.c]} (${MORT[ls.c]})`, `${dateKo(ls.t, false)} · 배터리 ${fmt(ls.v)}mV`]);
     if (A.deployOff) r.push(["끝난 방식", A.deployOff.map(([ko, c]) => c ? `${ko} (${c})` : ko).join(", "), "연구자 기록"]);
-    else if (!A.frozen) r.push(["끝난 이유", "데이터에 적혀 있지 않아요", "배터리가 다 됐거나, 태그가 떨어졌거나, 연구가 끝났을 수 있어요"]);
+    else if (!A.frozen) r.push(["끝난 이유", "기록 없음", ""]);
     return r;
   }
 
@@ -352,18 +351,16 @@ const Story = (() => {
       return { B, lon: p.lon, lat: p.lat, km: hav(me.lon, me.lat, p.lon, p.lat), same: B.src === A.src, pl: runAt(B.pl, nearestIdx(B, t)) };
     }).sort((a, b) => (b.same - a.same) || a.km - b.km);
   }
-  // what a record contains, for the picker
-  const NOT_IN = "고도, 수온, 잠수 깊이, 심박·체온, 움직임 세기(가속도), 날씨는 이 기록에 없어요.";
   // what the record holds; `upto` keeps a running record from counting what hasn't arrived yet
   function contents(A, upto = Infinity) {
     const live = upto < A.t1, nSt = live ? A.status.filter(m => m.t <= upto).length : A.status.length;
-    const r = [["위치 기록", `원본 ${fmt(A.rawN)}개`, A.rawN > A.n ? `시각이 가까운 기록을 묶어 지도에는 ${fmt(A.n)}개 지점` : `지도에도 ${fmt(A.n)}개 지점`]];
+    const r = [["위치 기록", `원본 ${fmt(A.rawN)}개`, A.rawN > A.n ? `지도에는 ${fmt(A.n)}개 지점` : ""]];
     r.push(["재는 방법", A.loc, METHOD[A.method]]);
-    if (A.ER) { const s = signal(A, Math.min(upto, A.t1)).er; if (s) r.push(["오차 반경", `${live ? "지금까지 " : ""}중간값 ${erFmt(s.med)}`, `가장 작게 ${erFmt(s.min)}, 가장 크게 ${erFmt(s.max)}`]); }
-    if (A.status.length) r.push(["태그 상태 신호", live ? `지금까지 ${nSt}번` : `${nSt}번`, "배터리 전압과 움직임 감지 신호(alive · dead · lost · unknown)"]);
-    if (A.se) r.push(["계절 표시", "위치마다 여름·겨울", "연구자가 붙인 구분"]);
-    if (A.herd) r.push(["무리", `${A.herd[0]} (${A.herd[1]})`, A.withCalf ? "포획 때 새끼와 함께였어요" : ""]);
-    if (A.deployNote) r.push(["포획 메모", A.deployNote, "연구자가 남긴 원문"]);
+    if (A.ER) { const s = signal(A, Math.min(upto, A.t1)).er; if (s) r.push(["오차 반경", `${live ? "지금까지 " : ""}중간값 ${erFmt(s.med)}`, `${erFmt(s.min)} ~ ${erFmt(s.max)}`]); }
+    if (A.status.length) r.push(["태그 상태 신호", live ? `지금까지 ${nSt}번` : `${nSt}번`, "배터리 전압 · alive/dead 등"]);
+    if (A.se) r.push(["계절 표시", "위치마다 여름·겨울", "연구자 표시"]);
+    if (A.herd) r.push(["무리", `${A.herd[0]} (${A.herd[1]})`, A.withCalf ? "새끼 동반" : ""]);
+    if (A.deployNote) r.push(["포획 메모", A.deployNote, "연구자 원문"]);
     if (A.instr) r.push(["태그 기종", `${A.instr} · PTT ${A.ptt}`, ""]);
     return r;
   }
@@ -395,7 +392,6 @@ const Story = (() => {
 
   /* ---------- badges ---------- */
   const ICON = {
-    heart: '<path d="M14 24s-9-5.6-9-11.6A5 5 0 0 1 14 9.6a5 5 0 0 1 9 2.8C23 18.4 14 24 14 24z"/>',
     sun: '<circle cx="14" cy="14" r="5"/><path d="M14 3v3M14 22v3M3 14h3M22 14h3M6.2 6.2l2 2M19.8 19.8l2 2M6.2 21.8l2-2M19.8 8.2l2-2"/>',
     cal: '<rect x="4" y="6" width="20" height="18" rx="3"/><path d="M4 11h20M9 3v5M19 3v5"/>',
     pen: '<path d="M5 23l3.5-1 12-12-2.5-2.5-12 12z"/><path d="M16.5 7.5l2.5 2.5"/>',
@@ -407,16 +403,15 @@ const Story = (() => {
     star: '<path d="M14 3.5l3.2 6.6 7.2 1-5.2 5 1.3 7.2L14 19.9l-6.5 3.4 1.3-7.2-5.2-5 7.2-1z"/>',
   };
   const BADGES = [
-    ["meet", "첫 만남", "친구를 입양했어요", "heart"],
-    ["visit3", "사흘 연속", "사흘 내내 찾아왔어요", "sun"],
-    ["week", "일곱 번 방문", "서로 다른 일곱 날 찾아왔어요", "cal"],
-    ["memo3", "메모 세 개", "관측 일지에 메모를 세 번 남겼어요", "pen"],
-    ["km1k", "함께 1,000km", "만난 뒤로 함께 1,000km를 갔어요", "route"],
-    ["km10k", "함께 1만km", "만난 뒤로 함께 10,000km를 갔어요", "globe"],
-    ["stamp3", "도장 세 개", "만난 뒤로 새 나라·바다 도장 세 개", "stamp"],
-    ["line", "선 넘기", "적도·회귀선·극권 중 하나를 함께 넘었어요", "line"],
-    ["far", "가장 먼 곳", "출발지에서 가장 멀리 간 날을 함께했어요", "pin"],
-    ["end", "끝까지 함께", "기록이 끝나는 날까지 함께했어요", "star"],
+    ["visit3", "3일 연속 방문", "사흘 연속으로 열어 봄", "sun"],
+    ["week", "7일 방문", "서로 다른 7일에 열어 봄", "cal"],
+    ["memo3", "메모 3개", "일지에 메모 3개", "pen"],
+    ["km1k", "1,000km", "입양 후 이동 거리", "route"],
+    ["km10k", "10,000km", "입양 후 이동 거리", "globe"],
+    ["stamp3", "새 장소 3곳", "입양 후 처음 들어간 나라·바다", "stamp"],
+    ["line", "위도선 통과", "적도·회귀선·극권 중 하나", "line"],
+    ["far", "가장 먼 곳", "입양 후 출발지에서 가장 먼 지점 도달", "pin"],
+    ["end", "기록 끝까지", "마지막 기록까지 따라감", "star"],
   ];
   function badges(pet, A, upto, isEnded) {
     const D = buildDays(A), m = meetDay(pet, A), b = pet.bond || {}, t0 = pet.anchorTrack;
@@ -427,7 +422,7 @@ const Story = (() => {
     for (let i = Math.max(0, idxAt(A, t0)); i < A.T.length - 1 && A.T[i] < upto && !crossed; i++)
       for (const [v] of LINES) if ((A.Y[i] - v) * (A.Y[i + 1] - v) < 0) { const t = A.T[i] + (v - A.Y[i]) / (A.Y[i + 1] - A.Y[i]) * (A.T[i + 1] - A.T[i]); if (t >= t0 && t <= upto) crossed = true; }
     const got = {
-      meet: true, visit3: (b.bestStreak || b.streak || 0) >= 3, week: (b.visits || 0) >= 7, memo3: Object.keys(pet.memos || {}).length >= 3,
+      visit3: (b.bestStreak || b.streak || 0) >= 3, week: (b.visits || 0) >= 7, memo3: Object.keys(pet.memos || {}).length >= 3,
       km1k: kmTogether >= 1000, km10k: kmTogether >= 10000,
       stamp3: stamps(A, upto).filter(s => s.s > t0).length >= 3,
       line: crossed, far: farT >= t0 && farT <= upto && homeKm(A, far) > 200, end: isEnded && m < D.length - 1,
@@ -435,37 +430,19 @@ const Story = (() => {
     return BADGES.map(([id, name, desc, icon]) => ({ id, name, desc, got: !!got[id], svg: `<svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[icon]}</svg>` }));
   }
 
-  /* ---------- the owner's visits ---------- */
-  const LEVELS = [[0, "처음 만난 사이"], [6, "아는 사이"], [16, "친구"], [36, "단짝"], [70, "가족"], [120, "영원한 단짝"]];
-  function level(pts) {
-    let i = 0; while (i + 1 < LEVELS.length && pts >= LEVELS[i + 1][0]) i++;
-    const lo = LEVELS[i][0], hi = i + 1 < LEVELS.length ? LEVELS[i + 1][0] : lo + 60;
-    return { i, name: LEVELS[i][1], frac: clamp((pts - lo) / (hi - lo), 0, 1), next: i + 1 < LEVELS.length ? LEVELS[i + 1][1] : null, toNext: hi - pts };
-  }
+  /* ---------- the owner's visits: days opened, and the current run of consecutive days ---------- */
   function visit(pet, now = Date.now()) {
-    const b = pet.bond || (pet.bond = { pts: 0, streak: 0, visits: 0 });
+    const b = pet.bond || (pet.bond = { streak: 0, visits: 0 });
     const today = localKey(now);
     if (b.lastDay === today) return null;
-    const y = localKey(now - DAY);
-    const gap = b.lastDay ? Math.round((midnight(now) - midnight(new Date(b.lastDay + "T12:00:00").getTime())) / DAY) : 0;
-    b.streak = b.lastDay === y ? (b.streak || 0) + 1 : 1;
+    b.streak = b.lastDay === localKey(now - DAY) ? (b.streak || 0) + 1 : 1;
     b.bestStreak = Math.max(b.bestStreak || 0, b.streak);
     b.visits = (b.visits || 0) + 1; b.lastDay = today;
-    const gain = 3 + (b.streak >= 3 ? 1 : 0);
-    b.pts = (b.pts || 0) + gain;
-    return { gain, streak: b.streak, gap };
-  }
-  function gain(pet, kind, now = Date.now()) {
-    const b = pet.bond || (pet.bond = { pts: 0, streak: 0, visits: 0 });
-    const today = localKey(now); b.day = b.day || {};
-    if (b.day.key !== today) b.day = { key: today, read: 0, pet: 0, memo: 0 };
-    const cap = { read: 3, pet: 1, memo: 2 }[kind], pts = { read: 1, pet: 1, memo: 2 }[kind];
-    if ((b.day[kind] || 0) >= cap) return 0;
-    b.day[kind] = (b.day[kind] || 0) + 1; b.pts = (b.pts || 0) + pts; return pts;
+    return { streak: b.streak };
   }
 
   return {
     petClock, meetDay, ended, digest, day, card, records, stays, signal, companions, contents, ending, qualMix,
-    stamps, stampSVG, badges, level, visit, gain, hm, agoKo, erFmt, llFmt, solarMin, clock24, METHOD, NOT_IN, DARK,
+    stamps, stampSVG, badges, visit, hm, agoKo, erFmt, llFmt, solarMin, clock24, METHOD, DARK,
   };
 })();

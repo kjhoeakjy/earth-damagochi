@@ -66,23 +66,17 @@ const HL_ICON = {
 };
 const ARROW_L = ICO('<path d="m14.5 6-6 6 6 6"/>', 2), ARROW_R = ICO('<path d="m9.5 6 6 6-6 6"/>', 2);
 
-/* ---------- toast & floaters ---------- */
+/* ---------- toast ---------- */
 let toastT = 0, toastAt = 0;
 function toast(html, ms = 3800) {
   const t = $("#toast");
-  t.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="var(--monarch-2)" stroke-width="1.8" stroke-linecap="round"><path d="M12 21s-7.5-4.7-7.5-10A4.3 4.3 0 0 1 12 8.2 4.3 4.3 0 0 1 19.5 11c0 5.3-7.5 10-7.5 10z"/></svg><span>${html}</span>`;
+  t.innerHTML = `<i class="tdot" aria-hidden="true"></i><span>${html}</span>`;
   t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), ms); toastAt = performance.now();
 }
-function hearts(el, n = 4) {
-  const r = el.getBoundingClientRect();
-  for (let i = 0; i < n; i++) {
-    const f = document.createElement("div"); f.className = "floater"; f.textContent = "♥";
-    f.style.left = (r.left + r.width / 2 + (Math.random() - .5) * r.width * .5) + "px"; f.style.top = (r.top + r.height * .45) + "px";
-    f.style.setProperty("--dx", ((Math.random() - .5) * 80) + "px"); f.style.animationDelay = (i * .12) + "s";
-    document.body.appendChild(f); setTimeout(() => f.remove(), 1800);
-  }
-}
-const plus = g => g ? ` <b style="color:var(--heart)">♥+${g}</b>` : "";
+const PACES = [[1, "실제 속도"], [24, "1시간에 하루"], [1440, "1분에 하루"]];
+const paceKo = v => (PACES.find(p => p[0] === v) || PACES[0])[1];
+// raw fixes received after time a, up to and including b
+const fixesBetween = (A, a, b) => { let n = 0; for (let i = idxAt(A, a) + 1, e = idxAt(A, b); i <= e; i++) n += A.NF[i]; return n; };
 
 /* ============================================================ browse ============================================================ */
 function renderFilters() {
@@ -107,7 +101,7 @@ function renderList() {
     if (s) pills.push(`<span class="pill sync">${s.k}년 전 오늘 · ${esc(A.nowPlace || "")}</span>`);
     if (A.age) pills.push(`<span class="pill">${A.age === "adult" ? "어른" : "어린 개체"}</span>`);
     if (A.sex) pills.push(`<span class="pill">${A.sex === "f" ? "암컷" : "수컷"}</span>`);
-    if (A.status.length) pills.push(`<span class="pill" title="태그가 배터리 전압과 상태 신호도 보냈어요">상태 신호</span>`);
+    if (A.status.length) pills.push(`<span class="pill" title="배터리 전압과 상태 신호 포함">상태 신호</span>`);
     if (A.S.iucn !== "LC") pills.push(`<span class="pill iucn ${A.S.iucn}" title="IUCN 적색목록 ${IUCN[A.S.iucn]}">${A.S.iucn}</span>`);
     const to = A.endName && A.endName !== placeName(A.placeOrder[0]) ? ` → ${esc(A.endName)}` : "";
     return `<button class="cand" type="button" role="option" data-id="${A.id}" aria-selected="${App.sel === A.id}">
@@ -149,18 +143,11 @@ function renderIntro() {
   const nSync = DB.animals.filter(A => A.sync).length;
   const counts = Object.keys(CLS).map(k => [k, DB.animals.filter(A => A.S.cls === k).length]);
   $("#detailBody").innerHTML = `<div class="intro">
-    <div class="eyebrow">실제 위성 추적 기록</div>
-    <h2>지구를 진짜로 여행한 동물 한 마리를 입양해요</h2>
-    <p>여기 있는 ${DB.animals.length}마리는 모두 과학자들이 몸에 위성 태그를 달아 실제로 따라간 동물이에요. 뻐꾸기, 갈매기, 알바트로스, 코끼리물범, 긴수염고래, 바다거북, 순록까지 있어요.</p>
-    <ol>
-      <li>왼쪽에서 분류, 종, 출발지, 가는 곳, 나이, 성별로 골라 보세요. 지구본의 반짝이는 점을 눌러도 돼요.</li>
-      <li>고른 동물의 실제 여정을 지구 위에서 미리 볼 수 있어요. 선 위의 작은 점이 태그가 실제로 위치를 잰 곳이에요.</li>
-      <li>입양하면 그 동물의 시계에 맞춰 하루하루가 흘러요. 위치 기록이 들어온 시각이 되면 알려 주고, 매일 그날의 실제 기록으로 만든 관측 일지가 쌓여요.</li>
-    </ol>
-    <div class="callout"><b>오늘 날짜에 맞춘 동물 ${nSync}마리</b><br>몇 년 전 바로 오늘, 그 동물이 실제로 있던 곳에서 시작해요. 그 뒤로는 진짜 시간과 같은 속도로 함께 나아가요.</div>
+    <h2>위성으로 추적한 동물 ${DB.animals.length}마리</h2>
+    <p>한 마리를 입양하면 그 동물의 실제 이동 기록을 날마다 따라가요. 목록이나 지구본의 점을 눌러 고르세요.</p>
     <div class="legend">${counts.map(([k, n]) => `<span><i style="background:${CLS[k].color}"></i>${CLS[k].ko} ${n}</span>`).join("")}</div>
-    <button class="btn" type="button" id="luckyBtn">오늘 날짜에 맞춘 동물 아무나 보기</button>
-    <p class="faint" style="margin:0;font-size:12px">지구는 실제 태양 위치로 낮과 밤을 그렸어요. 별자리도 실제 하늘이에요. 구름은 날씨 정보가 아니라 위성 사진 한 장이에요.</p>
+    <div class="callout"><b>오늘 날짜에 기록이 있는 동물 ${nSync}마리</b><br>몇 년 전 오늘 있던 자리에서 시작해요.</div>
+    <button class="btn" type="button" id="luckyBtn">무작위로 하나 보기</button>
   </div>`;
   $("#detailFoot").hidden = true;
   $("#luckyBtn").onclick = () => { const c = visible().filter(A => A.sync); const pool = c.length ? c : DB.animals.filter(A => A.sync); select(pool[Math.floor(Math.random() * pool.length)].id); };
@@ -175,22 +162,21 @@ function renderDetail() {
     <div class="dhead"><canvas width="168" height="168"></canvas><div>
       <div class="eyebrow">${CLS[S.cls].ko} · 태그 #${esc(tagShort(A))}</div>
       <h2>${esc(S.ko)}</h2><div class="sci">${esc(S.sci)} · ${esc(S.en)}</div></div>
-      <button class="iconbtn dclose" type="button" id="dClose" aria-label="소개 닫기" title="닫기">${ICO('<path d="M6 6l12 12M18 6 6 18"/>', 2)}</button></div>
-    ${s ? `<div class="callout"><b>${s.k}년 전 오늘</b>, 이 동물은 <b>${esc(A.nowPlace || "")}</b>에 있었어요. 지금 입양하면 거기서부터 함께 걸어요. 남은 기록은 ${Math.floor(s.left)}일이에요.</div>`
-      : `<div class="callout">기록은 <b>${dateKo(t0)}</b>부터 <b>${dateKo(t1)}</b>까지, ${durKo(A.days)}이에요. 입양하면 태그를 단 첫날부터 함께 시작해요.</div>`}
+      <button class="iconbtn dclose" type="button" id="dClose" aria-label="닫기" title="닫기">${ICO('<path d="M6 6l12 12M18 6 6 18"/>', 2)}</button></div>
+    ${s ? `<div class="callout"><b>${s.k}년 전 오늘</b> ${esc(A.nowPlace || "")}에 있었어요 · 남은 기록 ${Math.floor(s.left)}일</div>`
+      : `<div class="callout">오늘 날짜 기록이 없어 첫 기록부터 시작해요.</div>`}
     <dl class="kv">
       <dt>출발지</dt><dd>${esc(AREA[A.area].startsWith(A.home) ? AREA[A.area] : `${A.home} (${AREA[A.area]})`)}</dd>
       <dt>성별</dt><dd>${A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : "기록 없음"}</dd>
-      <dt>나이</dt><dd>${esc(A.ageText || "기록 없음")}${A.withCalf ? " · 새끼와 함께" : ""}</dd>
+      <dt>나이</dt><dd>${esc(A.ageText || "기록 없음")}${A.withCalf ? " · 새끼 동반" : ""}</dd>
       <dt>기록 기간</dt><dd>${dateKo(t0)} ~ ${dateKo(t1)} (${durKo(A.days)})</dd>
       <dt>이동 거리</dt><dd>${fmt(A.km)}km · 출발지에서 가장 멀리 ${fmt(A.maxFromHome)}km</dd>
       <dt>지나간 곳</dt><dd>${places.slice(0, 8).map(esc).join(", ")}${places.length > 8 ? ` 외 ${places.length - 8}곳` : ""}</dd>
       <dt>보전 상태</dt><dd>IUCN ${S.iucn} (${IUCN[S.iucn]})</dd>
     </dl>
-    <div class="sec"><h3>이 기록에 들어 있는 것</h3>${rowsHTML(Story.contents(A))}
-      <div class="sub-h">위치 정확도</div>${mixHTML(Story.qualMix(A))}
-      <p class="faint small">${esc(Story.NOT_IN)}</p></div>
-    <details class="ending"><summary>기록이 어떻게 끝나는지 보기</summary>${rowsHTML(Story.ending(A))}</details>
+    <details class="ending"><summary>기록에 들어 있는 것</summary>${rowsHTML(Story.contents(A))}
+      <div class="sub-h">위치 정확도</div>${mixHTML(Story.qualMix(A))}</details>
+    <details class="ending"><summary>기록이 끝난 방식</summary>${rowsHTML(Story.ending(A))}</details>
     <ul class="facts">${S.facts.map(f => `<li>${esc(f)}</li>`).join("")}</ul>
     <div class="src">자료: ${esc(src.who || "")} · <a href="${esc(src.url || "#")}" target="_blank" rel="noopener">${esc(src.title || "")}</a> (${esc(src.via || "")})${src.note ? `<br>${esc(src.note)}` : ""}</div>
   </div>`;
@@ -198,34 +184,31 @@ function renderDetail() {
   $("#dClose").onclick = () => select(null);
   const foot = $("#detailFoot"); foot.hidden = false;
   const full = Store.state.pets.length >= 6, have = Store.state.pets.some(p => p.aid === A.id);
-  foot.innerHTML = have ? `<button class="btn primary block" type="button" id="goPet">이미 함께하는 동물이에요 · 보러 가기</button>`
-    : `<button class="btn primary block" type="button" id="adoptBtn" ${full ? "disabled" : ""}>${full ? "여섯 마리까지 함께할 수 있어요" : `${esc(shortName(A))} 입양하기`}</button>`;
+  foot.innerHTML = have ? `<button class="btn primary block" type="button" id="goPet">입양한 동물 · 보러 가기</button>`
+    : `<button class="btn primary block" type="button" id="adoptBtn" ${full ? "disabled" : ""}>${full ? "6마리까지 입양할 수 있어요" : `${esc(shortName(A))} 입양하기`}</button>`;
   if (have) $("#goPet").onclick = () => { Store.state.active = Store.state.pets.find(p => p.aid === A.id).id; Store.save(); enterPet(); };
   else if (!full) $("#adoptBtn").onclick = () => openAdopt(A);
 }
 
 /* ============================================================ adoption ============================================================ */
-const NAMES = {
-  bird: ["나비", "구름이", "바람이", "하늘이", "솜이", "깃털이", "별이"], sea: ["나비", "몽글이", "파도", "물결이", "두부", "방울이", "모래"],
-  fish: ["나비", "푸름이", "파랑이", "물방울", "바다", "초롱이"], land: ["나비", "솔이", "눈송이", "보리", "단풍이", "이끼"],
-};
+const NAMES = { bird: ["나비", "바람", "하늘", "구름"], sea: ["나비", "파도", "물결", "바다"], fish: ["나비", "파랑", "물결", "바다"], land: ["나비", "솔", "보리", "단풍"] };
 function openAdopt(A) {
   const s = A.sync, m = $("#mAdopt"), sh = $("#adSheet");
   const sug = NAMES[A.S.cls];
   let mode = s ? "sync" : "start", pace = 1, name = sug[0];
-  const paceRow = () => mode === "start" ? `<div class="field"><label>시간 흐름</label><div class="chips" id="adPace">
-      ${[[1, "하루에 하루 (진짜 시간)"], [24, "한 시간에 하루"], [1440, "1분에 하루 (구경용)"]].map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pace === v}">${l}</button>`).join("")}</div></div>` : "";
+  const paceRow = () => mode === "start" ? `<div class="field"><label>속도</label><div class="chips" id="adPace">
+      ${PACES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pace === v}">${l}</button>`).join("")}</div></div>` : "";
   const render = () => {
     sh.innerHTML = `
-      <div><div class="eyebrow">입양 신청서</div><h2 id="adTitle">${esc(josa(shortName(A), "을/를"))} 입양할까요?</h2></div>
-      <div class="field"><label for="adName">이름을 지어 주세요</label><input id="adName" maxlength="12" value="${esc(name)}" autocomplete="off">
+      <h2 id="adTitle">${esc(shortName(A))} 입양</h2>
+      <div class="field"><label for="adName">이름</label><input id="adName" maxlength="12" value="${esc(name)}" autocomplete="off">
         <div class="namechips">${sug.map(n => `<button class="chip" type="button" data-n="${esc(n)}" aria-pressed="${n === name}">${esc(n)}</button>`).join("")}</div></div>
-      <div class="field"><label>언제부터 함께할까요?</label><div class="chips" id="adMode">
-        ${s ? `<button class="chip" type="button" data-m="sync" aria-pressed="${mode === "sync"}">${s.k}년 전 오늘부터 · ${esc(A.nowPlace || "")}</button>` : ""}
-        <button class="chip" type="button" data-m="start" aria-pressed="${mode === "start"}">태그를 단 날부터 · ${dateKo(A.T[0])}</button></div>
-        <div class="faint" style="font-size:12px">${mode === "sync" ? `${dateKo(s.t)}의 실제 위치에서 시작해 진짜 시간과 같은 속도로 나아가요. 그때 위치를 잰 시각이 되면 지금도 같은 시각에 새 기록이 들어와요. 기록은 ${Math.floor(s.left)}일 남았어요.` : `첫날 위치에서 시작해요. ${durKo(A.days)} 동안의 기록을 처음부터 따라가요.`}</div></div>
+      <div class="field"><label>시작</label><div class="chips" id="adMode">
+        ${s ? `<button class="chip" type="button" data-m="sync" aria-pressed="${mode === "sync"}">${s.k}년 전 오늘 · ${esc(A.nowPlace || "")}</button>` : ""}
+        <button class="chip" type="button" data-m="start" aria-pressed="${mode === "start"}">첫 기록 · ${dateKo(A.T[0])}</button></div>
+        <div class="faint small">${mode === "sync" ? `실제 시간으로 흘러요 · 남은 기록 ${Math.floor(s.left)}일` : `${durKo(A.days)} 기록을 처음부터 따라가요`}</div></div>
       ${paceRow()}
-      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button" id="adCancel">다음에 할게요</button><button class="btn primary" type="button" id="adOk">입양하기</button></div>`;
+      <div class="actions"><button class="btn" type="button" id="adCancel">취소</button><button class="btn primary" type="button" id="adOk">입양하기</button></div>`;
     $("#adName").oninput = e => { name = e.target.value; $$(".namechips .chip", sh).forEach(c => c.setAttribute("aria-pressed", c.dataset.n === name)); };
     $$(".namechips .chip", sh).forEach(c => c.onclick = () => { name = c.dataset.n; render(); });
     $$("#adMode .chip", sh).forEach(c => c.onclick = () => { mode = c.dataset.m; render(); });
@@ -234,7 +217,8 @@ function openAdopt(A) {
     $("#adOk").onclick = () => {
       const nm = (name || "").trim().slice(0, 12) || sug[0];
       const now = Date.now();
-      const pet = { id: "p" + now.toString(36), aid: A.id, name: nm, adoptedAt: now, anchorReal: now, mode, pace: mode === "sync" ? 1 : pace, anchorTrack: mode === "sync" ? s.t : A.T[0], k: s ? s.k : 0, bond: { pts: 0, streak: 0, visits: 0 }, memos: {}, seen: {} };
+      const anchorTrack = mode === "sync" ? s.t : A.T[0];
+      const pet = { id: "p" + now.toString(36), aid: A.id, name: nm, adoptedAt: now, anchorReal: now, mode, pace: mode === "sync" ? 1 : pace, anchorTrack, seenT: anchorTrack, k: s ? s.k : 0, bond: { streak: 0, visits: 0 }, memos: {} };
       Store.state.pets.push(pet); Store.state.active = pet.id; Story.visit(pet, now); Store.save();
       m.hidden = true; showCert(pet, true);
     };
@@ -259,16 +243,15 @@ function showCert(pet, fresh) {
   const A = DB.byId.get(pet.aid), S = A.S, m = $("#mCert");
   $("#cert").innerHTML = `<canvas class="guil"></canvas><div class="in">
     <div class="ttl">입양 증서<small>CERTIFICATE OF ADOPTION</small></div>
-    <div class="line">아래 동물의 실제 기록을 하루하루 함께 따라가기로 약속했음을 증명합니다.</div>
     <div class="who">${esc(pet.name)}</div>
-    <div class="line">${esc(S.ko)} <i>${esc(S.sci)}</i> · 태그 #${esc(tagShort(A))}<br>${esc(A.home)}에서 출발 · 기록 ${esc(A.src_.who || "")}</div>
-    <div class="grid"><div>입양한 날<b>${dateKo(pet.adoptedAt)}</b></div><div>함께 시작한 기록<b>${dateKo(pet.anchorTrack)}</b></div><div>기록 속 여정<b>${fmt(A.km)}km</b></div></div>
+    <div class="line">${esc(S.ko)} <i>${esc(S.sci)}</i> · 태그 #${esc(tagShort(A))}<br>${esc(A.home)} 출발 · 자료 ${esc(A.src_.who || "")}</div>
+    <div class="grid"><div>입양한 날<b>${dateKo(pet.adoptedAt)}</b></div><div>시작 기록<b>${dateKo(pet.anchorTrack)}</b></div><div>전체 이동<b>${fmt(A.km)}km</b></div></div>
   </div>
   <svg class="seal" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="#b7432a" opacity=".88"/><circle cx="50" cy="50" r="38" fill="none" stroke="#f6dccd" stroke-width="1.5" stroke-dasharray="3 3"/>
     <text x="50" y="47" text-anchor="middle" font-family="Diphylleia, serif" font-size="16" fill="#fbe9de">나비야</text><text x="50" y="66" text-anchor="middle" font-family="Diphylleia, serif" font-size="16" fill="#fbe9de">나비야</text></svg>`;
   m.hidden = false;
   requestAnimationFrame(() => guilloche($("#cert canvas")));
-  $("#certGo").textContent = fresh ? "함께 시작하기" : "닫기";
+  $("#certGo").textContent = fresh ? "시작하기" : "닫기";
   $("#certGo").onclick = () => { m.hidden = true; if (fresh) enterPet(); };
   m.onclick = e => { if (e.target === m && !fresh) m.hidden = true; };
 }
@@ -277,8 +260,9 @@ function showCert(pet, fresh) {
 function activePet() { const st = Store.state; return st.pets.find(p => p.id === st.active) || st.pets[0] || null; }
 function enterPet() {
   const pet = activePet(); if (!pet) return enterBrowse();
-  // notes kept by older versions were called replies
-  pet.memos = pet.memos || pet.replies || {}; delete pet.replies; pet.seen = pet.seen || {};
+  // notes kept by older versions were called replies; points, levels and read marks are gone
+  pet.memos = pet.memos || pet.replies || {}; delete pet.replies; delete pet.seen;
+  if (pet.bond) { delete pet.bond.pts; delete pet.bond.day; }
   App.mode = "pet"; App.pet = pet; App.A = DB.byId.get(pet.aid); App.lastK = -1; App.dayView = null; App.lastFix = App.lastSt = null; App.editing = null;
   document.body.dataset.mode = "pet"; document.body.removeAttribute("data-sel");
   $("#picker").hidden = true; $("#detail").hidden = true; $("#pet").hidden = false; $("#journal").hidden = false; $("#timeline").hidden = false;
@@ -290,16 +274,15 @@ function enterPet() {
   Globe.flyTo(p.lon, p.lat, Math.min(Globe.homeDist(), Globe.distFor(.35, .4)), 1800);
   Globe.setFollow(true, () => { const q = posAt(App.A, Story.petClock(App.pet, App.A)); return [q.lon, q.lat]; });
   $("#cFollow").setAttribute("aria-pressed", "true");
-  const v = Story.visit(pet, now);
-  if (v) {
-    Store.save();
-    const msg = v.gap > 1 ? `${v.gap}일 만에 다시 왔어요` : v.streak >= 2 ? `${v.streak}일 연속 방문이에요` : "오늘 첫 방문이에요";
-    setTimeout(() => toast(msg + plus(v.gain)), 900);
-  }
+  Story.visit(pet, now);
+  const nNew = pet.seenT != null && pet.seenT < t ? fixesBetween(A, pet.seenT, t) : 0;
+  pet.seenT = t; Store.save();
+  if (nNew) setTimeout(() => toast(`지난번 이후 새 위치 기록 <b>${fmt(nNew)}</b>개`), 900);
   renderModeBtn(); renderSwitch(); tick(true);
   $$(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === App.tab));
 }
 function enterBrowse() {
+  if (App.mode === "pet") Store.save();
   App.mode = "browse"; document.body.dataset.mode = "browse";
   $("#picker").hidden = false; $("#detail").hidden = false; $("#pet").hidden = true; $("#journal").hidden = true; $("#timeline").hidden = true;
   Globe.setFollow(false); Globe.setHome(null); Globe.highlight(null, null); Globe.setOthers(null); Globe.setErrorDisk(null);
@@ -310,8 +293,8 @@ function enterBrowse() {
 }
 function renderModeBtn() {
   const b = $("#btnMode"), pet = activePet();
-  if (App.mode === "pet") { b.hidden = false; b.textContent = "+ 다른 동물 둘러보기"; b.onclick = () => enterBrowse(); }
-  else if (pet) { b.hidden = false; b.textContent = `← ${pet.name}에게 돌아가기`; b.onclick = () => enterPet(); }
+  if (App.mode === "pet") { b.hidden = false; b.textContent = "다른 동물 보기"; b.onclick = () => enterBrowse(); }
+  else if (pet) { b.hidden = false; b.textContent = `← ${pet.name}`; b.onclick = () => enterPet(); }
   else b.hidden = true;
 }
 function renderSwitch() {
@@ -329,7 +312,7 @@ function tick(force) {
   App.ended = Story.ended(pet, A, now);
   Globe.setTime(t); Globe.trackNow(t);
   const p = posAt(A, t); Globe.setMarker([p.lon, p.lat]);
-  App.pos = p; App.t = t;
+  App.pos = p; App.t = t; pet.seenT = t;
   // fixes and status messages arrive when the pet's clock reaches the moment they were sent
   const fi = idxAt(A, t); let si = App.lastSt ?? 0;
   while (si < A.status.length && A.status[si].t <= t) si++;
@@ -341,7 +324,7 @@ function tick(force) {
     const prev = App.lastK; App.lastK = k;
     const follow = App.dayView == null || App.dayView === prev;
     if (follow) App.dayView = k;
-    if (prev >= 0 && k > prev && !newFix) toast(`${dateKo(buildDays(A)[k].s, false)} 관측 일지가 시작됐어요`);
+    if (prev >= 0 && k > prev && !newFix) toast(`새 일지 · ${dateKo(buildDays(A)[k].s, false)}`);
     renderTimeline();
     tab = tab || (follow && App.tab === "day" ? "reset" : "keep");
   } else if (newFix || newSt) {
@@ -365,9 +348,9 @@ function announce(fi, st) {
 function renderClock() {
   const c = $("#clock"), now = Date.now();
   if (App.mode === "pet" && App.pet) {
-    const pet = App.pet, rel = pet.mode === "sync" ? `${pet.k}년 전 오늘` : `기록 ${App.lastK + 1}일째`;
-    c.innerHTML = `<b>${esc(pet.name)}의 시간</b> · ${dateKo(App.t)} ${timeKo(App.t)}<br>${rel} · 지금 내 시간 ${timeKo(now)}`;
-  } else c.innerHTML = `<b>${dateKoW(now)}</b> ${timeKo(now)}<br>실제 태양 위치로 그린 지구`;
+    const pet = App.pet, rel = pet.mode === "sync" ? `${pet.k}년 전 오늘` : `기록 ${App.lastK + 1}일째${pet.pace > 1 ? " · " + paceKo(pet.pace) : ""}`;
+    c.innerHTML = `<b>${dateKo(App.t)} ${timeKo(App.t)}</b><br>${rel}`;
+  } else c.innerHTML = `<b>${dateKoW(now)}</b> ${timeKo(now)}`;
 }
 let petRenderT = 0;
 function renderPet(force) {
@@ -375,29 +358,27 @@ function renderPet(force) {
   if (!force && performance.now() - petRenderT < 15000) { updatePetStatus(); return; }
   petRenderT = performance.now();
   $("#petName").textContent = pet.name;
-  $("#petSub").textContent = `${shortName(A)} #${tagShort(A)} · ${A.home}에서 출발`;
+  $("#petSub").textContent = `${shortName(A)} #${tagShort(A)} · ${A.home} 출발`;
   const kmT = kmAt(A, App.t) - kmAt(A, pet.anchorTrack);
   const together = Math.max(1, Math.floor((midnight(Date.now()) - midnight(pet.adoptedAt)) / DAY) + 1);
   const home = hav(A.X[0], A.Y[0], App.pos.lon, App.pos.lat);
   let raw = 0; for (let i = 0, n = idxAt(A, App.t); i <= n; i++) raw += A.NF[i];
   $("#petStats").innerHTML = [
-    ["함께한 날", fmt(together), "일"], ["함께 간 거리", kmFmt(Math.max(0, kmT)), "km"],
-    ["출발지에서", kmFmt(home), "km"], ["받은 위치 기록", fmt(raw), "개"],
+    ["입양 후", fmt(together), "일"], ["입양 후 이동", kmFmt(Math.max(0, kmT)), "km"],
+    ["출발지에서", kmFmt(home), "km"], ["위치 기록", fmt(raw), "개"],
   ].map(([k2, v, u]) => `<div class="stat"><div class="k">${k2}</div><div class="v">${v}<small>${u}</small></div></div>`).join("");
-  const L = Story.level(pet.bond.pts || 0);
-  const full = Math.round(L.frac * 5);
-  $("#hearts").innerHTML = Array.from({ length: 5 }, (_, i) => `<svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.7-7.5-10A4.3 4.3 0 0 1 12 8.2 4.3 4.3 0 0 1 19.5 11c0 5.3-7.5 10-7.5 10z" fill="${i < full ? "var(--heart)" : "none"}" stroke="var(--heart)" stroke-width="1.6"/></svg>`).join("");
-  $("#lvl").innerHTML = `<b>${L.name}</b>${L.next ? ` · ${L.next}까지 ♥${L.toNext}` : ""}`;
+  const b = pet.bond || {};
+  $("#bond").innerHTML = `방문 <b>${fmt(b.visits || 1)}</b>일 · 연속 <b>${fmt(b.streak || 1)}</b>일 · 메모 <b>${fmt(Object.keys(pet.memos).length)}</b>개`;
   if (!App.otherHover) renderOthers();
   updatePetStatus();
 }
 function updatePetStatus() {
   const A = App.A, live = $("#liveDot"), st = $("#petStatus"), sg = $("#petSig"), t = App.t, p = App.pos;
   const fi = idxAt(A, t), last = A.status.filter(m => m.t <= t).pop();
-  const lastSt = last ? ` · 태그 ${esc(MORT[last.c])} ${fmt(last.v)}mV <span class="faint">(${esc(Story.agoKo(t - last.t))})</span>` : "";
+  const lastSt = last ? ` · 태그 ${esc(MORT[last.c])} ${fmt(last.v)}mV` : "";
   if (App.ended) {
     live.className = "live off";
-    st.textContent = `기록이 끝났어요 · 마지막 위치 기록 ${dateKo(A.t1)}`;
+    st.textContent = `기록 끝 · ${dateKo(A.t1)}`;
     sg.innerHTML = `${esc(placeName(runAt(A.pl, A.T.length - 1)) || "")}${lastSt}`;
     return;
   }
@@ -410,10 +391,10 @@ function updatePetStatus() {
   let move = "";
   if (fi < A.T.length - 1) {
     const km = A.cum[fi + 1] - A.cum[fi], h = (A.T[fi + 1] - A.T[fi]) / HOUR;
-    move = A.coarse ? "" : km / h >= 1 ? ` · 기록 사이 평균 시속 ${fmt(km / h, km / h < 10 ? 1 : 0)}km` : " · 거의 제자리";
+    move = A.coarse ? "" : km / h >= 1 ? ` · 시속 ${fmt(km / h, km / h < 10 ? 1 : 0)}km` : " · 거의 제자리";
   }
-  st.innerHTML = `${esc(place || "")} · 그곳 ${Story.clock24(Story.solarMin(t, p.lon))} ${tod}${move}`;
-  sg.innerHTML = `마지막 위치 기록 ${esc(Story.agoKo(since))} · ${esc(QUAL[A.QS[fi]].kind)} ${esc(QUAL[A.QS[fi]].txt)}${lastSt}`;
+  st.innerHTML = `${esc(place || "")} · 현지 ${Story.clock24(Story.solarMin(t, p.lon))} ${tod}${move}`;
+  sg.innerHTML = `마지막 기록 ${esc(Story.agoKo(since))} · ${esc(QUAL[A.QS[fi]].kind)}${lastSt}`;
 }
 
 /* ---------- other animals tracked at the same moment ---------- */
@@ -426,7 +407,7 @@ function updateOthers(force) {
 }
 function renderOthers() {
   const el = $("#petOthers"), L = App.others || [];
-  if (!L.length) { el.innerHTML = `<h3>같은 시각 추적되던 동물</h3><p class="faint">이 시각에 함께 기록된 다른 동물은 없어요.</p>`; return; }
+  if (!L.length) { el.innerHTML = `<h3>같은 시각 추적되던 동물</h3><p class="faint">없음</p>`; return; }
   const show = App.othersOpen ? L : L.slice(0, 4);
   el.innerHTML = `<h3>같은 시각 추적되던 동물 <span class="mono">${L.length}</span></h3>
     <div class="olist">${show.map(o => `<button class="orow" type="button" data-id="${o.B.id}"><i style="background:${CLS[o.B.S.cls].color}"></i>
@@ -442,7 +423,7 @@ function renderOthers() {
 }
 
 /* ---------- scope animation ---------- */
-let scopeHappy = 0, scopeT = 0;
+let scopeT = 0;
 function drawScope(dt, t) {
   if (App.mode !== "pet" || !App.A || $("#pet").hidden) return;
   scopeT += dt; if (scopeT < 1 / 30) return; scopeT = 0;
@@ -464,11 +445,10 @@ function drawScope(dt, t) {
     else if (sp > 1.2) { mode = "swim"; under = true; floor = S.look === "bearded"; }
     else mode = "float";
   }
-  scopeHappy = Math.max(0, scopeHappy - dt * .9);
   const heading = (() => { const a = posAt(A, tt - 3 * HOUR), b = posAt(A, tt + 3 * HOUR); const dl = ((b.lon - a.lon + 540) % 360) - 180; return Math.abs(dl) < .01 ? 1 : dl > 0 ? 1 : -1; })();
   Critter.scene($("#scopeCv"), {
     look: S.look, t, alt, moon: moonPhase(tt), env, terrain, snow: S.look === "caribou" && winter, ice: polarIce && (S.look === "ringed" || S.look === "bearded"),
-    mode, under, floor, heading, sleep: false, happy: scopeHappy, big: { whale: .8, marlin: .72, turtle: .66, caribou: .62, albatross: .5, frigate: .56, pelican: .6 }[S.look] || .64,
+    mode, under, floor, heading, sleep: false, big: { whale: .8, marlin: .72, turtle: .66, caribou: .62, albatross: .5, frigate: .56, pelican: .6 }[S.look] || .64,
   });
 }
 
@@ -510,7 +490,7 @@ function stripSVG(S) {
   if (S.now != null) g += `<path d="M${(S.now * W).toFixed(1)} ${y0 + bh + 1}l4 6h-8z" fill="#ffd2a1"/>`;
   for (const h of [0, 6, 12, 18, 24]) g += `<text x="${Math.min(W - 6, Math.max(6, h / 24 * W))}" y="${H - 1}" text-anchor="middle" font-size="8.5" font-family="IBM Plex Mono, monospace" fill="#7c889e">${h}</text>`;
   return `<figure class="strip"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="하루 24시간 동안 그곳의 낮과 밤, 위치 기록 ${S.fixes.length}번">${g}</svg>
-    <figcaption>내 시간 0~24시 · <span class="k-day">밝은 칸</span> 그곳의 낮 · <span class="k-fix">세로선</span> 위치 기록${S.st.length ? " · ◆ 태그 상태 신호" : ""}${S.before > 0 || S.after < 1 ? " · 빗금은 기록 밖" : ""}</figcaption></figure>`;
+    <figcaption><span>내 시간 기준</span><span><i class="k k-day"></i>그곳의 낮</span><span><i class="k k-fix"></i>위치 기록</span>${S.st.length ? `<span><i class="k-st">◆</i>상태 신호</span>` : ""}${S.before > 0 || S.after < 1 ? `<span><i class="k k-out"></i>기록 밖</span>` : ""}</figcaption></figure>`;
 }
 function fixChips(A, fx) {
   if (!fx.length) return "";
@@ -521,26 +501,24 @@ function tabDay() {
   const pet = App.pet, A = App.A, k = App.dayView ?? App.lastK, m = Story.meetDay(pet, A);
   const C = Story.card(pet, A, k, k === App.lastK && !App.ended ? App.t : Infinity), x = C.x, d = x.d;
   const pre = k < m, today = k === App.lastK && !App.ended;
-  const rel = pre ? `만나기 ${m - k}일 전` : k === m ? "만난 날" : `만난 지 ${k - m}일째`;
   const st = x.newPl.filter(c => !(k === 0 && c === runAt(A.pl, 0)));
   const sec = (title, rows, extra = "") => rows && rows.length ? `<section class="osec"><h4>${title}</h4>${rowsHTML(rows)}${extra}</section>` : "";
   const editing = App.editing === k, mine = pet.memos[k];
   $("#tabBody").innerHTML = `
     <div class="daynav"><button class="iconbtn" type="button" id="dPrev" aria-label="전날 일지" ${k <= 0 ? "disabled" : ""}>${ARROW_L}</button>
-      <div class="when"><b>${dateKoW(d.s)}${today ? " · 오늘" : ""}</b>${new Date(d.s).getFullYear()}년 · 기록 ${k + 1}일째 · ${rel}</div>
+      <div class="when"><b>${dateKoW(d.s)}${today ? " · 오늘" : ""}</b>${new Date(d.s).getFullYear()}년 · 기록 ${k + 1}일째${k === m ? " · 입양일" : ""}</div>
       <button class="iconbtn" type="button" id="dNext" aria-label="다음 날 일지" ${k >= App.lastK ? "disabled" : ""}>${ARROW_R}</button></div>
     <article class="obs${pre ? " pre" : ""}">
-      <header class="obs-h"><span>관측 일지</span><span class="mono">${esc(shortName(A))} #${esc(tagShort(A))} · ${pre ? "만나기 전" : "D+" + (k - m)}</span></header>
+      <header class="obs-h"><span>관측 일지</span><span class="mono">${esc(shortName(A))} #${esc(tagShort(A))} · ${pre ? "입양 전" : "D+" + (k - m)}</span></header>
       ${st.length ? `<div class="stamp-mini" aria-hidden="true">${Story.stampSVG(st[0], d.s, hashStr(A.id + st[0]) % 100000, false)}</div>` : ""}
       ${stripSVG(C.strip)}
       ${C.hl.length ? `<ul class="hl">${C.hl.map(([ic, t]) => `<li class="hl-${ic}">${ICO(HL_ICON[ic])}<span>${esc(t)}</span></li>`).join("")}</ul>` : ""}
       ${sec("위치", C.rows.pos)}${sec("이동", C.rows.move)}${sec("신호", C.rows.sig, fixChips(A, x.fx))}${sec("하늘", C.rows.sky)}
-      ${C.tagRows ? sec("태그를 단 날", C.tagRows) : ""}${C.endRows ? sec("기록의 끝", C.endRows) : ""}
+      ${C.tagRows ? sec("태그 부착", C.tagRows) : ""}${C.endRows ? sec("기록 끝", C.endRows) : ""}
     </article>
-    <p class="faint note">모든 값은 위치 기록과 그 시각, 태그가 보낸 상태 신호에서 계산했어요. 기록 사이의 위치와 거리는 두 기록을 지구 표면의 가장 짧은 길로 이어 구했어요.</p>
     ${pre ? "" : mine && !editing ? `<div class="mymemo"><div class="mm-h"><span>내 메모</span><button class="linkbtn" type="button" id="mEdit">고치기</button></div><p>${esc(mine)}</p></div>`
-      : `<div class="memo"><label for="mTxt">내 메모</label><textarea id="mTxt" maxlength="200" placeholder="이날 기록을 보고 떠오른 것을 적어 두세요">${esc(App.drafts[k] ?? mine ?? "")}</textarea>
-      <div class="r-row"><span>이 기기에만 저장돼요</span><button class="btn small primary" type="button" id="mSave">저장</button></div></div>`}`;
+      : `<div class="memo"><label for="mTxt">내 메모</label><textarea id="mTxt" maxlength="200" placeholder="이날의 메모">${esc(App.drafts[k] ?? mine ?? "")}</textarea>
+      <div class="r-row"><span>이 기기에만 저장</span><button class="btn small primary" type="button" id="mSave">저장</button></div></div>`}`;
   $("#dPrev").onclick = () => viewDay(k - 1);
   $("#dNext").onclick = () => viewDay(k + 1);
   const ta = $("#mTxt");
@@ -548,13 +526,10 @@ function tabDay() {
   const save = $("#mSave");
   if (save) save.onclick = () => {
     const v = ta.value.trim(); if (!v) return ta.focus();
-    const fresh = !pet.memos[k];
-    pet.memos[k] = v.slice(0, 200); delete App.drafts[k]; App.editing = null;
-    const g = fresh ? Story.gain(pet, "memo") : 0; Store.save();
-    toast("메모를 저장했어요" + plus(g)); renderPet(true); tabDay();
+    pet.memos[k] = v.slice(0, 200); delete App.drafts[k]; App.editing = null; Store.save();
+    toast("메모를 저장했어요"); renderPet(true); tabDay();
   };
   const ed = $("#mEdit"); if (ed) ed.onclick = () => { App.editing = k; App.drafts[k] = pet.memos[k]; tabDay(); $("#mTxt").focus(); };
-  if (!pre && !pet.seen[k]) { pet.seen[k] = 1; const g = Story.gain(pet, "read"); Store.save(); if (g) renderPet(true); }
 }
 
 function tabTrip() {
@@ -563,33 +538,33 @@ function tabTrip() {
   const goT = (ms, ll) => { const k = dayIndexAt(A, ms); return `data-k="${k}"${ll ? ` data-ll="${ll[0].toFixed(3)},${ll[1].toFixed(3)}"` : ""}`; };
   const rec = [];
   if (R.day) rec.push([`하루 가장 많이 이동`, `${kmFmt(R.day.km)}km`, `${dateKo(D[R.day.k].s)}`, goT(D[R.day.k].s)]);
-  if (R.fast) rec.push(["가장 빠른 구간", `시속 ${fmt(R.fast.v, R.fast.v < 10 ? 1 : 0)}km`, `${dateKo(A.T[R.fast.i], false)} ${timeKo(A.T[R.fast.i])}부터 ${Story.hm((A.T[R.fast.i + 1] - A.T[R.fast.i]) / MIN)} 사이 평균`, goT(A.T[R.fast.i], [A.X[R.fast.i + 1], A.Y[R.fast.i + 1]])]);
+  if (R.fast) rec.push(["가장 빠른 구간", `시속 ${fmt(R.fast.v, R.fast.v < 10 ? 1 : 0)}km`, `${dateKo(A.T[R.fast.i], false)} ${timeKo(A.T[R.fast.i])}부터 ${Story.hm((A.T[R.fast.i + 1] - A.T[R.fast.i]) / MIN)}`, goT(A.T[R.fast.i], [A.X[R.fast.i + 1], A.Y[R.fast.i + 1]])]);
   const at = i => `${dateKo(A.T[i], false)} · ${placeName(runAt(A.pl, i)) || ""}`;
   rec.push(["가장 북쪽", `${A.Y[R.north] >= 0 ? "북위" : "남위"} ${Math.abs(A.Y[R.north]).toFixed(2)}°`, at(R.north), goT(A.T[R.north], [A.X[R.north], A.Y[R.north]])]);
   rec.push(["가장 남쪽", `${A.Y[R.south] >= 0 ? "북위" : "남위"} ${Math.abs(A.Y[R.south]).toFixed(2)}°`, at(R.south), goT(A.T[R.south], [A.X[R.south], A.Y[R.south]])]);
   rec.push(["출발지에서 가장 먼 곳", `${kmFmt(hav(A.X[0], A.Y[0], A.X[R.far], A.Y[R.far]))}km`, at(R.far), goT(A.T[R.far], [A.X[R.far], A.Y[R.far]])]);
-  if (R.meas > 20 && R.meas > R.tot * .3) rec.push(["해 진 뒤 이동", `${pct(R.night / R.meas)}%`, `8시간 안쪽으로 이어진 기록 ${kmFmt(R.meas)}km 가운데`, ""]);
-  if (R.gap) rec.push(["가장 오래 끊긴 신호", R.gap.dt >= 2 * DAY ? `${fmt(R.gap.dt / DAY, 1)}일` : Story.hm(R.gap.dt / MIN), `${dateKo(A.T[R.gap.i], false)} ${timeKo(A.T[R.gap.i])} 다음 기록까지`, goT(A.T[R.gap.i])]);
+  if (R.meas > 20 && R.meas > R.tot * .3) rec.push(["해 진 뒤 이동", `${pct(R.night / R.meas)}%`, `${kmFmt(R.meas)}km 중`, ""]);
+  if (R.gap) rec.push(["가장 긴 기록 공백", R.gap.dt >= 2 * DAY ? `${fmt(R.gap.dt / DAY, 1)}일` : Story.hm(R.gap.dt / MIN), `${dateKo(A.T[R.gap.i], false)} ${timeKo(A.T[R.gap.i])}부터`, goT(A.T[R.gap.i])]);
   const rows = [];
   for (let k = App.lastK; k >= 0; k--) {
     const d = Story.digest(A, k), pre = k < m, today = k === App.lastK;
     const x = today ? Story.day(A, k, t) : null, raw = x ? x.raw : d.raw, km = x ? x.km : d.km, stc = (x ? x.st : d.st).map(s => s.c);
     const sub = [regionName(d.rg), cityName(d.ci) && cityName(d.ci) + " 근처"].filter(Boolean).join(" · ") || (placeKind(d.pl) === "sea" ? "바다 위" : "");
     const flag = stc.includes("d") ? ` · <span class="bad">dead 신호</span>` : stc.some(c => c !== "a") ? " · 상태 신호" : "";
-    rows.push(`<button class="dl${pre ? " pre" : ""}" type="button" data-k="${k}"><span class="d">${pre ? "지난날" : "D+" + (k - m)}<br>${dateShort(d.s)}</span>
+    rows.push(`<button class="dl${pre ? " pre" : ""}" type="button" data-k="${k}"><span class="d">${pre ? "입양 전" : "D+" + (k - m)}<br>${dateShort(d.s)}</span>
       <span class="p">${esc(placeName(d.pl) || "")}${d.newPl.length && k > 0 ? ` <span class="new">새 도장</span>` : ""}<small>${esc(sub)}${sub ? " · " : ""}${raw ? `기록 ${raw}번` : "기록 없음"}${flag}</small></span><span class="km">${kmFmt(km)}km</span></button>`);
   }
   $("#tabBody").innerHTML = `<div class="sec"><h3>지금까지</h3>
-    <div class="stats"><div class="stat"><div class="k">태그 단 뒤 이동</div><div class="v">${kmFmt(kmAt(A, t))}<small>km</small></div></div>
+    <div class="stats"><div class="stat"><div class="k">총 이동</div><div class="v">${kmFmt(kmAt(A, t))}<small>km</small></div></div>
       <div class="stat"><div class="k">기록된 날</div><div class="v">${App.lastK + 1}<small>일</small></div></div>
-      <div class="stat"><div class="k">받은 위치 기록</div><div class="v">${fmt(R.raw)}<small>개</small></div></div>
+      <div class="stat"><div class="k">위치 기록</div><div class="v">${fmt(R.raw)}<small>개</small></div></div>
       <div class="stat"><div class="k">기록 없는 날</div><div class="v">${fmt(R.empty)}<small>일</small></div></div></div></div>
     <div class="sec"><h3>기록 모음</h3><div class="recs">${rec.map(([a, b, c, go]) => `<button class="rec" type="button" ${go || "disabled"}><span class="rk">${esc(a)}</span><b>${esc(b)}</b><small>${esc(c)}</small></button>`).join("")}</div></div>
     <div class="sec"><h3>머문 곳 <span class="mono faint">${ST.length}</span></h3>
-      <p class="faint small">위치가 사흘 넘게 처음 자리에서 25km 안에 있었던 때예요.</p>
-      ${ST.length ? `<div class="stays">${ST.slice().reverse().map(s => `<button class="stay" type="button" ${goT(s.t0, [s.lon, s.lat])}><b>${esc(placeName(s.pl) || "")}${s.open ? ` <span class="now">지금 머무는 중</span>` : ""}</b>
+      <p class="faint small">25km 안에서 사흘 넘게 머문 곳</p>
+      ${ST.length ? `<div class="stays">${ST.slice().reverse().map(s => `<button class="stay" type="button" ${goT(s.t0, [s.lon, s.lat])}><b>${esc(placeName(s.pl) || "")}${s.open ? ` <span class="now">머무는 중</span>` : ""}</b>
         <small>${esc([regionName(s.rg), cityName(s.ci) && cityName(s.ci) + " 근처"].filter(Boolean).join(" · "))}</small>
-        <span class="mono">${dateShort(s.t0)} ~ ${dateShort(s.t1)} · ${fmt(s.days, s.days < 10 ? 1 : 0)}일 · 기록 ${s.nfix}개</span></button>`).join("")}</div>` : `<p class="muted small">아직 없어요.</p>`}</div>
+        <span class="mono">${dateShort(s.t0)} ~ ${dateShort(s.t1)} · ${fmt(s.days, s.days < 10 ? 1 : 0)}일 · 기록 ${s.nfix}개</span></button>`).join("")}</div>` : `<p class="muted small">없음</p>`}</div>
     ${A.se ? seasonHTML(Story.signal(A, t).seasons) : ""}
     <div class="sec"><h3>날마다</h3><div class="dlist">${rows.join("")}</div></div>`;
   const tb = $("#tabBody");
@@ -601,10 +576,10 @@ function tabTrip() {
 }
 function seasonHTML(S) {
   if (!S || !S.runs.length) return "";
-  return `<div class="sec"><h3>연구자가 붙인 계절</h3>
+  return `<div class="sec"><h3>연구자 표시 계절</h3>
     <div class="seasons">${S.runs.map(r => `<span class="sr ${r.c}" style="flex:${Math.max(1, (r.t1 - r.t0) / DAY)}" title="${esc(SEASON_KO[r.c])} ${esc(dateKo(r.t0))} ~ ${esc(dateKo(r.t1))}"></span>`).join("")}</div>
     <p class="muted small">${S.runs.map(r => `${SEASON_KO[r.c]} ${dateShort(r.t0)}~${dateShort(r.t1)}`).join(" · ")}</p>
-    ${S.km != null ? `<p class="small">여름으로 표시된 위치들의 한가운데와 겨울로 표시된 위치들의 한가운데는 <b>${kmFmt(S.km)}km</b> 떨어져 있어요.</p>` : ""}</div>`;
+    ${S.km != null ? `<p class="small">여름·겨울 위치의 중심 사이 <b>${kmFmt(S.km)}km</b></p>` : ""}</div>`;
 }
 
 function tabSignal() {
@@ -623,17 +598,17 @@ function tabSignal() {
     <div class="stats"><div class="stat"><div class="k">받은 위치 기록</div><div class="v">${fmt(raw)}<small>개</small></div></div>
       <div class="stat"><div class="k">기록 있는 날</div><div class="v">${withFix}<small>/ ${K + 1}일</small></div></div>
       <div class="stat"><div class="k">마지막 기록</div><div class="v sm">${esc(App.ended ? dateKo(A.t1, false) : Story.agoKo(G.since))}</div></div>
-      <div class="stat"><div class="k">가장 오래 끊긴 때</div><div class="v sm">${G.gap ? (G.gap.dt >= 2 * DAY ? fmt(G.gap.dt / DAY, 1) + "일" : esc(Story.hm(G.gap.dt / MIN))) : "-"}</div></div></div></div>
-    <div class="sec"><h3>날마다 받은 위치 기록</h3>${perDay}<p class="faint small">막대를 누르면 그날 일지로 가요. 흐린 막대는 만나기 전, 붉은 줄은 기록이 없던 날이에요.</p></div>
-    <div class="sec"><h3>위치를 재는 방법</h3><p class="small muted">${esc(A.loc)} · ${esc(Story.METHOD[A.method])}</p>
+      <div class="stat"><div class="k">가장 긴 공백</div><div class="v sm">${G.gap ? (G.gap.dt >= 2 * DAY ? fmt(G.gap.dt / DAY, 1) + "일" : esc(Story.hm(G.gap.dt / MIN))) : "-"}</div></div></div></div>
+    <div class="sec"><h3>날마다 받은 위치 기록</h3>${perDay}<p class="faint small">흐린 막대는 입양 전, 붉은 줄은 기록 없는 날</p></div>
+    <div class="sec"><h3>위치를 재는 방법</h3><p class="small"><b>${esc(A.loc)}</b><br><span class="muted">${esc(Story.METHOD[A.method])}</span></p>
       <div class="sub-h">정확도</div>${mixHTML(G.mix)}
-      ${G.er ? `<p class="small">이 기록에는 위치마다 오차 반경이 있어요. 지금까지 중간값 <b>${Story.erFmt(G.er.med)}</b>, 가장 작게 ${Story.erFmt(G.er.min)}, 가장 크게 ${Story.erFmt(G.er.max)}예요.${A.ER && A.coarse ? " 지구본의 둥근 테두리가 지금 위치의 오차 범위예요." : ""}</p>` : ""}</div>`;
+      ${G.er ? rowsHTML([["오차 반경", `중간값 ${Story.erFmt(G.er.med)}`, `${Story.erFmt(G.er.min)} ~ ${Story.erFmt(G.er.max)}${A.coarse ? " · 지구본의 원이 지금 위치의 오차 범위" : ""}`]]) : ""}</div>`;
   if (A.status.length) html += batteryHTML(A, G.st, t);
   $("#tabBody").innerHTML = html;
   $$(".chart [data-k]").forEach(r => r.addEventListener("click", () => viewDay(+r.getAttribute("data-k"))));
 }
 function batteryHTML(A, st, t) {
-  if (!st.length) return `<div class="sec"><h3>태그 배터리와 상태 신호</h3><p class="muted small">아직 받은 상태 신호가 없어요.</p></div>`;
+  if (!st.length) return `<div class="sec"><h3>태그 배터리와 상태 신호</h3><p class="muted small">아직 없음</p></div>`;
   const W = 320, H = 96, t0 = Math.min(A.T[0], st[0].t), t1 = Math.max(t, st[st.length - 1].t), vs = st.map(s => s.v);
   const lo = Math.min(...vs) - 40, hi = Math.max(...vs) + 40;
   const X = ms => 8 + (W - 54) * (ms - t0) / Math.max(1, t1 - t0), Y = v => 8 + (H - 30) * (1 - (v - lo) / (hi - lo));
@@ -647,19 +622,18 @@ function batteryHTML(A, st, t) {
       <path d="${path}" fill="none" stroke="rgba(245,166,91,.7)" stroke-width="1.4"/>${dots}${yl(Math.max(...vs))}${Math.min(...vs) !== Math.max(...vs) ? yl(Math.min(...vs)) : ""}
       <text x="8" y="${H - 4}" font-size="8.5" font-family="IBM Plex Mono, monospace" fill="#7c889e">${dateShort(t0)}</text>
       <text x="${W - 46}" y="${H - 4}" text-anchor="end" font-size="8.5" font-family="IBM Plex Mono, monospace" fill="#7c889e">${dateShort(t1)}</text></svg>
-    <p class="small muted">상태 신호 ${st.length}번 · ${Object.keys(cnt).map(c => `${MORT[c]} ${cnt[c]}번`).join(", ")}. 전압 단위는 mV예요.</p>
+    <p class="small muted">상태 신호 ${st.length}번 · ${Object.keys(cnt).map(c => `${MORT[c]} ${cnt[c]}번`).join(", ")}</p>
     ${rowsHTML(recent.map(s => [`${dateShort(s.t)} ${hhmm(s.t)}`, `${MORT_KO[s.c]} (${MORT[s.c]})`, `배터리 ${fmt(s.v)}mV`]))}
-    <p class="faint small">'dead'는 태그가 한동안 움직임을 느끼지 못하면 보내는 신호예요. 이 연구에는 dead 신호 뒤에 다시 움직인 새도 있어서, 이 신호만으로 죽었다고 단정할 수는 없어요.</p></div>`;
+    ${cnt.d ? `<p class="faint small">dead는 태그가 한동안 움직임을 못 느낄 때 보내는 신호예요. 실제 사망과 다를 수 있어요.</p>` : ""}</div>`;
 }
 
 function tabPassport() {
   const pet = App.pet, A = App.A, m = Story.meetDay(pet, A);
   const st = Story.stamps(A, App.t);
   const mine = st.filter(s => s.s > pet.anchorTrack).length;
-  $("#tabBody").innerHTML = `<div class="sec"><h3>${esc(pet.name)}의 여권</h3>
-    <p class="muted" style="margin:0;font-size:13px">위치 기록이 처음 들어간 나라와 바다마다 도장을 찍어요. 흐린 도장은 만나기 전에 찍힌 거예요. 함께 모은 도장 ${mine}개.</p></div>
-    <div class="passport">${st.map((s, i) => `<button class="stamp${s.k < m ? " pre" : ""}" type="button" data-k="${s.k}" title="${esc(placeName(s.c))} · ${esc(dateKo(s.s))} ${esc(timeKo(s.s))}">${Story.stampSVG(s.c, s.s, hashStr(A.id + s.c) % 100000, i === 0)}</button>`).join("")}
-    ${App.ended ? "" : `<div class="stamp next">다음 도장은<br>어디일까요?</div>`}</div>`;
+  $("#tabBody").innerHTML = `<div class="sec"><h3>여권 · 도장 ${st.length}개</h3>
+    <p class="faint small">처음 들어간 나라와 바다 · 입양 후 ${mine}개 · 흐린 도장은 입양 전</p></div>
+    <div class="passport">${st.map((s, i) => `<button class="stamp${s.k < m ? " pre" : ""}" type="button" data-k="${s.k}" title="${esc(placeName(s.c))} · ${esc(dateKo(s.s))} ${esc(timeKo(s.s))}">${Story.stampSVG(s.c, s.s, hashStr(A.id + s.c) % 100000, i === 0)}</button>`).join("")}</div>`;
   $$(".stamp[data-k]").forEach(b => b.onclick = () => viewDay(+b.dataset.k));
 }
 function tabBadges() {
@@ -671,23 +645,22 @@ function tabInfo() {
   const pet = App.pet, A = App.A, S = A.S, src = A.src_;
   $("#tabBody").innerHTML = `
     <div class="sec"><h3>이름</h3><div class="field" style="flex-direction:row;gap:8px"><input id="iName" maxlength="12" value="${esc(pet.name)}" style="flex:1;min-width:0" aria-label="이름"><button class="btn small" type="button" id="iSave">바꾸기</button></div></div>
-    <div class="sec"><h3>시간</h3><p class="muted" style="margin:0;font-size:13px">${pet.mode === "sync" ? `${pet.k}년 전 오늘에 맞춰 진짜 시간과 같은 속도로 흘러요. 그때 위치를 잰 시각이 되면 지금도 같은 시각에 새 기록이 들어와요. 오늘 밤 12시가 지나면 다음 날 일지가 시작돼요.` : `태그를 단 날부터 시작했어요. 지금 속도는 ${pet.pace === 1 ? "하루에 하루" : pet.pace === 24 ? "한 시간에 하루" : "1분에 하루"}예요.`}</p>
-      ${pet.mode === "start" ? `<div class="chips" id="iPace">${[[1, "하루에 하루"], [24, "한 시간에 하루"], [1440, "1분에 하루"]].map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pet.pace === v}">${l}</button>`).join("")}</div>` : ""}</div>
+    <div class="sec"><h3>시간</h3>${pet.mode === "sync" ? `<p class="muted small">${pet.k}년 전 오늘에 맞춰 실제 시간으로 흘러요.</p>`
+      : `<p class="muted small">첫 기록부터 시작</p><div class="sub-h">속도</div><div class="chips" id="iPace">${PACES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pet.pace === v}">${l}</button>`).join("")}</div>`}</div>
     <div class="sec"><h3>입양 증서</h3><button class="btn small" type="button" id="iCert">증서 다시 보기</button></div>
     <div class="sec"><h3>이 동물의 기록</h3><dl class="kv">
       <dt>종</dt><dd>${esc(S.ko)} <i class="faint">${esc(S.sci)}</i></dd><dt>태그</dt><dd>#${esc(A.tag)}</dd>
       <dt>출발지</dt><dd>${esc(A.home)}</dd><dt>기록 기간</dt><dd>${dateKo(A.T[0])} ~ ${App.ended ? dateKo(A.t1) : "진행 중"}</dd>
-      <dt>나이·성별</dt><dd>${esc(A.ageText || "기록 없음")} · ${A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : "기록 없음"}</dd></dl>
+      <dt>나이·성별</dt><dd>${esc([A.ageText, A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : ""].filter(Boolean).join(" · ") || "기록 없음")}</dd></dl>
       ${rowsHTML(Story.contents(A, App.ended ? Infinity : App.t).filter(r => r[0] !== "위치 기록"))}
-      <p class="faint small">${esc(Story.NOT_IN)}</p>
       <div class="src">자료: ${esc(src.who || "")} · <a href="${esc(src.url || "#")}" target="_blank" rel="noopener">${esc(src.title || "")}</a> (${esc(src.via || "")})</div></div>
-    <div class="sec"><h3>알아 두기</h3><p class="muted" style="margin:0;font-size:13px">위치는 실시간이 아니라 몇 년 전 실제 기록이에요. 지구본의 작은 점이 태그가 실제로 잰 위치이고, 선은 그 사이를 지구 표면의 가장 짧은 길로 이은 거예요. 낮과 밤, 해 뜨고 지는 시각, 별자리, 달 모양은 그 시각 그 장소를 기준으로 계산했어요. 구름은 날씨가 아니라 위성 사진 한 장이에요.</p></div>
-    <div class="sec"><h3>다른 기기로 옮기기</h3><p class="muted small" style="margin:0">입양 기록은 이 브라우저에만 저장돼요. 아래 코드를 복사해 다른 기기의 같은 칸에 붙여 넣으면 그대로 옮겨져요.</p>
+    <div class="sec"><h3>참고</h3><p class="muted small">위치는 실시간이 아니라 몇 년 전 실제 기록이에요. 지구본의 구름은 그날 날씨가 아니라 위성 사진 한 장이에요.</p></div>
+    <div class="sec"><h3>백업</h3><p class="muted small">입양 기록은 이 브라우저에만 저장돼요. 코드를 다른 기기에 붙여 넣으면 옮겨져요.</p>
       <div class="field" style="flex-direction:row;gap:8px"><input id="iCode" readonly value="${esc(Store.exportCode())}" style="flex:1;min-width:0;font-family:var(--f-mono);font-size:11px" aria-label="백업 코드"><button class="btn small" type="button" id="iCopy">복사</button></div>
-      <div class="field" style="flex-direction:row;gap:8px"><input id="iPaste" placeholder="NABIYA1: 로 시작하는 코드 붙여 넣기" style="flex:1;min-width:0;font-size:12px" aria-label="옮겨 올 코드"><button class="btn small" type="button" id="iLoad">불러오기</button></div>
+      <div class="field" style="flex-direction:row;gap:8px"><input id="iPaste" placeholder="백업 코드 붙여 넣기" style="flex:1;min-width:0;font-size:12px" aria-label="옮겨 올 코드"><button class="btn small" type="button" id="iLoad">불러오기</button></div>
       <div id="iMsg" class="small faint"></div></div>
-    <div class="sec"><h3>작별</h3><div id="byeBox"><button class="btn small" type="button" id="iBye">${esc(josa(pet.name, "과/와"))} 작별하기</button></div></div>`;
-  $("#iSave").onclick = () => { const v = $("#iName").value.trim().slice(0, 12); if (!v) return; pet.name = v; Store.save(); renderPet(true); renderSwitch(); renderModeBtn(); toast(`이제 이름은 ${esc(v)}예요`); };
+    <div class="sec"><h3>입양 취소</h3><div id="byeBox"><button class="btn small" type="button" id="iBye">입양 취소</button></div></div>`;
+  $("#iSave").onclick = () => { const v = $("#iName").value.trim().slice(0, 12); if (!v) return; pet.name = v; Store.save(); renderPet(true); renderSwitch(); renderModeBtn(); toast(`이름을 ${esc(josa(v, "으로/로"))} 바꿨어요`); };
   $$("#iPace .chip").forEach(c => c.onclick = () => {
     const now = Date.now(), t = Story.petClock(pet, A, now);
     pet.anchorReal = now; pet.anchorTrack = t; pet.pace = +c.dataset.v; Store.save(); tabInfo();
@@ -699,12 +672,12 @@ function tabInfo() {
     catch (e) { inp.select(); $("#iMsg").textContent = "코드를 선택해 두었어요. 직접 복사해 주세요."; }
   };
   $("#iLoad").onclick = () => {
-    if (!Store.importCode($("#iPaste").value)) { $("#iMsg").textContent = "코드를 읽지 못했어요. NABIYA1: 부터 끝까지 붙여 넣었는지 확인해 주세요."; return; }
+    if (!Store.importCode($("#iPaste").value)) { $("#iMsg").textContent = "코드를 읽지 못했어요."; return; }
     Store.state.pets = Store.state.pets.filter(p => DB.byId.has(p.aid)); Store.save();
     toast("입양 기록을 불러왔어요"); activePet() ? enterPet() : enterBrowse();
   };
   $("#iBye").onclick = () => {
-    $("#byeBox").innerHTML = `<div class="confirm">정말 작별할까요? 메모와 도장, 배지가 모두 사라져요.<div style="display:flex;gap:8px"><button class="btn small" type="button" id="byeNo">아니요</button><button class="btn small" type="button" id="byeYes" style="border-color:rgba(255,143,158,.5);color:var(--heart)">작별하기</button></div></div>`;
+    $("#byeBox").innerHTML = `<div class="confirm">입양을 취소하면 메모와 배지가 모두 지워져요.<div style="display:flex;gap:8px"><button class="btn small" type="button" id="byeNo">그대로 두기</button><button class="btn small" type="button" id="byeYes" style="border-color:rgba(255,143,158,.5);color:var(--heart)">입양 취소</button></div></div>`;
     $("#byeNo").onclick = tabInfo;
     $("#byeYes").onclick = () => { const st = Store.state; st.pets = st.pets.filter(p => p.id !== pet.id); st.active = st.pets[0] ? st.pets[0].id : null; Store.save(); App.pet = null; st.pets.length ? enterPet() : enterBrowse(); };
   };
@@ -727,7 +700,7 @@ function renderTimeline() {
   if (!App.ended) html.push(`<span class="dpill" aria-hidden="true" style="opacity:.5">?</span>`);
   const el = $("#tlDays"); el.innerHTML = html.join("");
   const d = D[sel];
-  $("#tlLabel").innerHTML = `<b>${sel < m ? "지난날" : "D+" + (sel - m)} · ${dateKo(d.s, false)}</b>${new Date(d.s).getFullYear()}년 · ${esc(placeName(d.pl) || "")}`;
+  $("#tlLabel").innerHTML = `<b>${sel < m ? "입양 전" : "D+" + (sel - m)} · ${dateKo(d.s, false)}</b>${new Date(d.s).getFullYear()}년 · ${esc(placeName(d.pl) || "")}`;
   $("#tlPrev").disabled = sel <= 0; $("#tlNext").disabled = sel >= K;
   // centre the chosen day (after the label above has taken its width)
   const centre = () => { const c = $(`.dpill[data-k="${sel}"]`, el); if (c && el.clientWidth) el.scrollLeft += c.getBoundingClientRect().left - el.getBoundingClientRect().left - (el.clientWidth - c.offsetWidth) / 2; };
@@ -789,10 +762,10 @@ function wire() {
   $("#tlDays").addEventListener("click", e => { const b = e.target.closest(".dpill[data-k]"); if (b) viewDay(+b.dataset.k); });
   $("#tlPrev").onclick = () => viewDay((App.dayView ?? App.lastK) - 1);
   $("#tlNext").onclick = () => viewDay((App.dayView ?? App.lastK) + 1);
-  const scope = $("#scope");
-  const petIt = () => { if (!App.pet) return; scopeHappy = 1; hearts(scope); const g = Story.gain(App.pet, "pet"); if (g) { Store.save(); renderPet(true); toast("쓰다듬었어요" + plus(g), 2400); } };
-  scope.addEventListener("click", petIt);
-  scope.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); petIt(); } });
+  // the pet's clock position is saved when the page goes away, so the next visit can say what arrived since
+  const keep = () => { if (App.mode === "pet") Store.save(); };
+  addEventListener("pagehide", keep);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) keep(); });
   $("#cFollow").onclick = () => {
     if (App.mode === "pet") {
       if (Globe.following) { Globe.setFollow(false); $("#cFollow").setAttribute("aria-pressed", "false"); }
@@ -831,11 +804,11 @@ async function boot() {
     const t = A.sync ? A.sync.t : A.T[0];
     A.nowPos = posAt(A, t); A.nowPlace = placeName(runAt(A.pl, nearestIdx(A, t)));
   }
-  msg.textContent = "진짜 지구를 그리는 중…";
+  msg.textContent = "지구를 그리는 중…";
   let ok = false;
   try { ok = typeof THREE !== "undefined" && await Globe.init($("#globe")); } catch (e) { ok = false; }
   if (!ok) {
-    $("#stage").insertAdjacentHTML("beforeend", `<div class="empty" style="position:absolute;inset:auto 0 40% 0">이 기기에서는 3D 지구를 그릴 수 없어요. 고르기와 관측 일지는 그대로 쓸 수 있어요.</div>`);
+    $("#stage").insertAdjacentHTML("beforeend", `<div class="empty" style="position:absolute;inset:auto 0 40% 0">이 기기에서는 3D 지구를 그릴 수 없어요.</div>`);
     // no render loop from the globe: keep the scope window alive on its own
     let last = performance.now();
     const loop = now2 => { const dt = Math.min((now2 - last) / 1000, .1); last = now2; drawScope(dt, now2 / 1000); requestAnimationFrame(loop); };

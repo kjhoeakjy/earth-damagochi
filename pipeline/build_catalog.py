@@ -469,27 +469,27 @@ SRC = {
         "title": "Navigation experiments in lesser black-backed gulls (Wikelski et al. 2015)",
         "who": "Max Planck Institute of Animal Behavior 외", "via": "Movebank · movingpandas-examples",
         "url": "https://doi.org/10.1038/srep17061",
-        "note": "핀란드 번식지에서 5월 말~6월 초 둥지 덫으로 잡아 태그를 단 어른 새 중, 실험 이동 없이 그대로 풀어준 무리만 골랐어요."},
+        "note": "실험으로 옮기지 않고 그 자리에 풀어준 어른 새만 골랐어요."},
     "icarus_cuckoo": {
         "title": "ICARUS Mongolia cuckoos Nymba (Movebank study 1542155599, CC0)",
         "who": "몽골 야생동물과학보전센터 · MPIAB", "via": "Movebank · eio/animal-movement",
         "url": "https://www.movebank.org/cms/webapp?gwt_fragment=page=studies,path=study1542155599",
-        "note": "국제우주정거장의 ICARUS 수신기로 위치를 받은 태그예요."},
+        "note": ""},
     "icarus_dove": {
         "title": "ICARUS Turtle doves (Movebank study 1542192442, CC BY-NC)",
         "who": "프랑스 국립자연사박물관(MNHN) · MPIAB", "via": "Movebank · eio/animal-movement",
         "url": "https://www.movebank.org/cms/webapp?gwt_fragment=page=studies,path=study1542192442",
-        "note": "국제우주정거장의 ICARUS 수신기로 위치를 받은 태그예요."},
+        "note": ""},
     "icarus_seabird": {
         "title": "Seabird ecology in the Atlantic, Ascension Island (Movebank study 1531481854, CC0)",
         "who": "어센션섬 정부 · MPIAB", "via": "Movebank · eio/animal-movement",
         "url": "https://www.movebank.org/cms/webapp?gwt_fragment=page=studies,path=study1531481854",
-        "note": "국제우주정거장의 ICARUS 수신기로 위치를 받은 태그예요."},
+        "note": ""},
     "weimerskirch": {
         "title": "Argos monitoring of adult wandering albatrosses, Crozet (H. Weimerskirch, CEBC-CNRS)",
         "who": "프랑스 시제 생물학연구센터(CEBC-CNRS)", "via": "R 패키지 adehabitatLT",
         "url": "https://cran.r-project.org/package=adehabitatLT",
-        "note": "어른 나그네알바트로스 6마리의 아르고스 위성 위치예요."},
+        "note": ""},
     "harrison_pelican": {
         "title": "Brown Pelican GPS (Autumn-Lynn Harrison, Smithsonian)",
         "who": "스미스소니언 철새센터", "via": "R 패키지 ctmm",
@@ -497,11 +497,11 @@ SRC = {
     "imos_sese": {
         "title": "Southern elephant seal Argos data, Îles Kerguelen (IMOS · IPEV · SNO-MEMO)",
         "who": "호주 IMOS · 프랑스 IPEV/SNO-MEMO", "via": "R 패키지 aniMotum · foieGras · bsam",
-        "url": "https://imos.org.au", "note": "몸에 단 CTD 태그는 수온과 염분도 쟀지만, 여기 받은 파일에는 위치만 있어요."},
+        "url": "https://imos.org.au", "note": ""},
     "nmml_fur": {
         "title": "Northern fur seal pup relocation data (Johnson et al. 2008, NOAA NMML)",
         "who": "미국 해양대기청(NOAA) 해양포유류연구소", "via": "R 패키지 crawl",
-        "url": "https://cran.r-project.org/package=crawl", "note": "그해 태어난 새끼 물개예요."},
+        "url": "https://cran.r-project.org/package=crawl", "note": ""},
     "dfo_ringed": {
         "title": "Ringed seal Argos tracks, Sanikiluaq, Nunavut (Fisheries and Oceans Canada)",
         "who": "캐나다 수산해양부", "via": "R 패키지 argosTrack (Albertsen et al. 2015)",
@@ -518,12 +518,12 @@ SRC = {
         "title": "Argos monitoring of a right whale (WhaleNet, Wheelock College)",
         "who": "WhaleNet (휠록 칼리지)", "via": "R 패키지 adehabitatLT",
         "url": "https://cran.r-project.org/package=adehabitatLT",
-        "note": "초기 위성 기록이라 위치가 1도 단위로 거칠게 남은 날도 있어요."},
+        "note": "초기 위성 기록이라 위치가 1도 단위로 거친 날이 있어요."},
     "musyl_marlin": {
         "title": "Blue marlin pop-up satellite tag 38606, Pacific 2003 (Dr. Mike Musyl, Pelagic Research Group)",
         "who": "Pelagic Research Group", "via": "R 패키지 xtractomatic (NOAA)",
         "url": "https://cran.r-project.org/package=xtractomatic",
-        "note": "물고기 태그는 햇빛 세기로 위치를 계산해서 하루 한 번, 오차가 큰 추정 위치예요."},
+        "note": ""},
     "shimada_turtle": {
         "title": "Green turtle Fastloc GPS, Sandy Strait (Shimada et al. 2016)",
         "who": "제임스쿡대학교 · 퀸즐랜드 환경부", "via": "R 패키지 SDLfilter",
@@ -531,7 +531,7 @@ SRC = {
     "bc_caribou": {
         "title": "Mountain caribou in British Columbia (BC Ministry of Environment, Movebank)",
         "who": "캐나다 브리티시컬럼비아주 환경부", "via": "Movebank · TidyTuesday 2020-06-23",
-        "url": "https://doi.org/10.5441/001/1.p5bn656k", "note": "목에 단 GPS 목걸이 기록이에요."},
+        "url": "https://doi.org/10.5441/001/1.p5bn656k", "note": ""},
 }
 
 CAT = []

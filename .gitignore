@@ -1,0 +1,3 @@
+__pycache__/
+# a local copy of the live-data branch's live.json, for testing the page
+data/live.json

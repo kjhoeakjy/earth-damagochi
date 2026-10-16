@@ -1,0 +1,85 @@
+# Animals tracked right now: every six hours, fetch new GPS fixes from Movebank and publish them to the
+# live-data branch, which the page reads (js/app.js). Needs the repository secrets MOVEBANK_USER and
+# MOVEBANK_PASS; without them the run does nothing.
+name: Live animals
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-data
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MOVEBANK_USER: ${{ secrets.MOVEBANK_USER }}
+      MOVEBANK_PASS: ${{ secrets.MOVEBANK_PASS }}
+    steps:
+      - name: Check the Movebank account
+        id: account
+        run: |
+          if [ -z "$MOVEBANK_USER" ] || [ -z "$MOVEBANK_PASS" ]; then
+            echo "MOVEBANK_USER and MOVEBANK_PASS are not set, so there is nothing to fetch." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.account.outputs.ready == 'true'
+
+      - name: Previous state
+        if: steps.account.outputs.ready == 'true'
+        run: |
+          mkdir -p live
+          if git fetch --depth=1 origin live-data; then
+            git show FETCH_HEAD:state.json > live/state.json || rm -f live/state.json
+          fi
+
+      - name: Natural Earth place names
+        if: steps.account.outputs.ready == 'true'
+        run: |
+          mkdir -p ne
+          for f in ne_50m_admin_0_countries ne_50m_lakes ne_10m_geography_marine_polys \
+                   ne_10m_geography_regions_polys ne_50m_admin_1_states_provinces ne_10m_populated_places; do
+            curl -fsSL --retry 3 -o "ne/$f.geojson" \
+              "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/$f.geojson"
+          done
+
+      - name: Python
+        if: steps.account.outputs.ready == 'true'
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet numpy==2.5.3 pandas==3.0.5 shapely==2.2.0
+
+      - name: Fetch new fixes
+        if: steps.account.outputs.ready == 'true'
+        run: |
+          set +e
+          .venv/bin/python pipeline/live.py --ne ne --state live/state.json --out live/live.json 2> live/log.txt
+          code=$?
+          cat live/log.txt
+          { echo '```'; tail -n 60 live/log.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+      - name: Publish to the live-data branch
+        if: steps.account.outputs.ready == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd live
+          cp ../pipeline/live_branch_README.md README.md
+          git init -q -b live-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md live.json state.json log.txt
+          git commit -qm "Live animals $(date -u +%Y-%m-%dT%H:%MZ)"
+          # one commit, replaced every run: the branch holds the latest data, not its history
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" live-data

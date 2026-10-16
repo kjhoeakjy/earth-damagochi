@@ -2,7 +2,7 @@
 
 나비야 나비야가 읽는 "지금 추적 중인 동물" 데이터예요. `.github/workflows/live.yml`이 여섯 시간마다 Movebank에서 새 GPS 위치를 받아 이 브랜치를 통째로 바꿔요.
 
-- `live.json`: 페이지가 읽는 동물 기록 (`data/animals.json`과 같은 형식)
+- `live.json`: 페이지가 읽는 동물 기록 (`data/animals.json`과 같은 형식). 경로는 최근 1년이고, 그보다 오래된 위치는 하루 하나씩 `early`에 있어요 (입양 후 첫 기록부터 재생할 때 써요)
 - `state.json`: 다음 실행이 이어 받는 상태 (동물별 경로, 연구, 이용 조건을 기다리는 연구)
 - `log.txt`: 마지막 실행 기록
 - `photos/`: 종마다 사진 한 장 (위키미디어 공용, 작가와 라이선스는 `live.json`의 `photos`)

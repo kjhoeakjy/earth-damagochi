@@ -424,24 +424,25 @@ function followNow() { const p = App.pos; Globe.setFollow(true); $("#cFollow").s
 /* ---------- replay: the record once, from its first fix to the pet's now, then back to now ---------- */
 function startReplay() {
   const A = App.A, pet = App.pet; if (!A || !pet || !Globe.ok) return;
-  const t0 = A.T[0], t1 = Math.min(Story.petClock(pet, A), A.T[A.T.length - 1]);
+  const W = wholeTrack(A), t0 = W.T[0], t1 = Math.min(Story.petClock(pet, A), A.T[A.T.length - 1]);
   if (t1 - t0 < 2 * DAY) return;
   stopReplay(false);
-  App.replay = { t0, t1, ms: clamp(6000 + (t1 - t0) / DAY * 22, 8000, 22000), at: performance.now() + 1300, raf: 0 };
+  App.replay = { W, t0, t1, ms: clamp(6000 + (t1 - t0) / DAY * 22, 8000, 22000), at: performance.now() + 1300, raf: 0 };
   document.body.dataset.replay = "";
   $("#timeline").hidden = true; $("#replay").hidden = false;
-  $("#rpWhat").textContent = trackCut(A) ? `${dateKo(t0)}부터 지금까지` : "첫 기록부터 지금까지";
-  Globe.setOthers(null); Globe.setErrorDisk(null); Globe.highlight(null, null);
-  Globe.showTrack(A, { color: "#f5a65b", now: t0, fresh: 1, fixes: false });
+  $("#rpWhat").textContent = trackSince(A) < t0 - 2 * DAY ? `${dateKo(t0)}부터 지금까지` : "첫 기록부터 지금까지";
+  Globe.setOthers(null); Globe.setErrorDisk(null); Globe.highlight(null, null); Globe.setHome([W.X[0], W.Y[0]]);
+  Globe.showTrack(W, { color: "#f5a65b", now: t0, fresh: 1, fixes: false });
   // the whole way in view, then the camera keeps the animal near the middle
-  const step = Math.max(1, Math.floor(A.T.length / 400)), lls = [];
-  for (let i = 0; i < A.T.length; i += step) lls.push([A.X[i], A.Y[i]]);
+  const step = Math.max(1, Math.floor(W.T.length / 400)), lls = [];
+  for (let i = 0; i < W.T.length; i += step) lls.push([W.X[i], W.Y[i]]);
   Globe.fitPoints(lls, .42); Globe.setFollow(true); $("#cFollow").setAttribute("aria-pressed", "true");
   if (narrow()) window.scrollTo({ top: 0, behavior: "smooth" });
   stepReplay();
 }
 function stepReplay() {
-  const R = App.replay, A = App.A; if (!R) return;
+  const R = App.replay; if (!R) return;
+  const A = R.W;
   const now = performance.now(), f = clamp((now - R.at) / R.ms, 0, 1), t = R.t0 + (R.t1 - R.t0) * f;
   Globe.trackNow(t);
   const p = posAt(A, t); App.pos = p; Globe.setMarker([p.lon, p.lat]);
@@ -461,7 +462,7 @@ function stopReplay(back, fly = true) {
   $("#replay").hidden = true; $("#timeline").hidden = App.mode !== "pet";
   if (!back || App.mode !== "pet") return;
   const A = App.A, pet = App.pet, t = Story.petClock(pet, A);
-  Globe.showTrack(A, { color: "#f5a65b", now: t, meet: pet.anchorTrack, fresh: 1 });
+  Globe.showTrack(A, { color: "#f5a65b", now: t, meet: pet.anchorTrack, fresh: 1 }); Globe.setHome([A.X[0], A.Y[0]]);
   tick(true);
   if (fly) { Globe.setFollow(true); $("#cFollow").setAttribute("aria-pressed", "true"); Globe.flyTo(App.pos.lon, App.pos.lat, Math.min(Globe.homeDist(), Globe.distFor(.35, .4)), 1600); }
 }
@@ -641,8 +642,9 @@ function updateLabels() {
   if (App.mode === "pet" && App.pet && App.pos) {
     const el = label("pet", `<div class="bubble"><span class="dot"></span><b>${esc(App.pet.name)}</b></div><div class="stem"></div>`);
     const pp = placeLabel(el, [App.pos.lon, App.pos.lat]);
-    const hl = label("home", `<div class="bubble" style="font-size:11px;padding:2px 8px;opacity:.8">${trackCut(App.A) ? "첫 위치" : "출발"}</div><div class="stem" style="height:12px"></div>`, "mini");
-    const hp = placeLabel(hl, [App.A.X[0], App.A.Y[0]]);
+    const H = App.replay ? App.replay.W : App.A;
+    const hl = label("home", `<div class="bubble" style="font-size:11px;padding:2px 8px;opacity:.8">${trackSince(App.A) < H.T[0] - 2 * DAY ? "첫 위치" : "출발"}</div><div class="stem" style="height:12px"></div>`, "mini");
+    const hp = placeLabel(hl, [H.X[0], H.Y[0]]);
     if (pp && hp && Math.hypot(pp.x - hp.x, pp.y - hp.y) < 48) hl.style.opacity = 0;
     const o = App.otherHover && App.others.find(x => x.B.id === App.otherHover);
     if (o) placeLabel(label("other", `<div class="bubble"><span class="dot" style="background:${CLS[o.B.S.cls].color};box-shadow:0 0 10px ${CLS[o.B.S.cls].color}"></span><b>${esc(shortName(o.B))}</b> <span class="faint">#${esc(tagShort(o.B))}</span></div><div class="stem"></div>`, "mini"), [o.lon, o.lat], 1.006);
@@ -706,7 +708,7 @@ function addLive(data, open, list) {
   for (const r of data.animals || []) {
     const sp = alias[r.sp] || r.sp;
     if (DB.byId.has(r.id) || !SPECIES[sp]) continue;
-    const A = prepAnimal({ ...r, sp, pl: re(r.pl, P), rg: re(r.rg, R), ci: re(r.ci, C) });
+    const A = prepAnimal({ ...r, sp, pl: re(r.pl, P), rg: re(r.rg, R), ci: re(r.ci, C), early: r.early && { ...r.early, pl: re(r.early.pl || [], P) } });
     A.open = open;
     DB.byId.set(A.id, A);
     if (list && r.live && r.live.listed && now - A.t1 < LIVE_DAYS * DAY) DB.animals.push(A);
@@ -718,13 +720,13 @@ const SNAP_KEY = "nabiya.live.v1";
 function loadSnaps() { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "{}") || {}; } catch (e) { return {}; } }
 function snapOf(r, data) {
   // the rows this record uses, renumbered
-  const sub = (table, runs) => { const m = new Map(), was = []; return [runs.map(([i, c]) => { if (c < 0) return [i, c]; if (!m.has(c)) { m.set(c, was.length); was.push(c); } return [i, m.get(c)]; }), was]; };
-  const [pl, P] = sub("places", r.pl), [rg, R] = sub("regions", r.rg), [ci, C] = sub("cities", r.ci);
+  const sub = (...lists) => { const m = new Map(), was = []; return [lists.map(runs => runs.map(([i, c]) => { if (c < 0) return [i, c]; if (!m.has(c)) { m.set(c, was.length); was.push(c); } return [i, m.get(c)]; })), was]; };
+  const [[pl, epl], P] = sub(r.pl, r.early ? r.early.pl || [] : []), [[rg], R] = sub(r.rg), [[ci], C] = sub(r.ci);
   const sci = (data.species[r.sp] || {}).sci || "", ph = data.photos || {};
   return { generated: data.generated, places: P.map(c => data.places[c]), placeGroups: P.map(c => (data.placeGroups || [])[c] || null),
     regions: R.map(c => data.regions[c]), cities: C.map(c => data.cities[c]), sources: { [r.src]: data.sources[r.src] },
     species: { [r.sp]: data.species[r.sp] }, photos: Object.fromEntries([sci, sci.split(" ").slice(0, 2).join(" ")].filter(k => ph[k]).map(k => [k, ph[k]])),
-    animals: [{ ...r, pl, rg, ci }] };
+    animals: [{ ...r, pl, rg, ci, ...(r.early ? { early: { ...r.early, pl: epl } } : {}) }] };
 }
 function keepSnaps() {
   if (!DB.live) return;

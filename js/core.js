@@ -370,6 +370,21 @@ function kmAt(A, t) {
   if (p.i >= A.T.length - 1) return A.cum[A.cum.length - 1];
   return A.cum[p.i] + (A.cum[p.i + 1] - A.cum[p.i]) * p.f;
 }
+// The whole record, for the replay: the early fixes (one a day, from before the track) and then the track.
+function wholeTrack(A) {
+  if (A._whole) return A._whole;
+  const e = A.early, T0 = A.T[0];
+  if (!e || !e.t) return (A._whole = A);
+  const tm = decodeSeq(e.t), xs = decodeSeq(e.x), ys = decodeSeq(e.y);
+  let m = tm.length; while (m && e.t0 * 1000 + tm[m - 1] * MIN >= T0) m--;
+  if (!m) return (A._whole = A);
+  const n = m + A.T.length, W = { id: A.id + ":whole", T: new Float64Array(n), X: new Float64Array(n), Y: new Float64Array(n), cum: new Float64Array(n) };
+  for (let i = 0; i < m; i++) { W.T[i] = e.t0 * 1000 + tm[i] * MIN; W.X[i] = xs[i] / 1e4; W.Y[i] = ys[i] / 1e4; }
+  W.T.set(A.T, m); W.X.set(A.X, m); W.Y.set(A.Y, m);
+  for (let i = 1; i < n; i++) W.cum[i] = W.cum[i - 1] + hav(W.X[i - 1], W.Y[i - 1], W.X[i], W.Y[i]);
+  W.pl = [...(e.pl || []).filter(([i]) => i < m), ...A.pl.map(([i, c]) => [i + m, c])];
+  return (A._whole = W);
+}
 const nearestIdx = (A, t) => { const p = posAt(A, t); return p.f > .5 ? Math.min(p.i + 1, A.T.length - 1) : p.i; };
 // Speed in km/h over the last few hours of track time.
 function speedAt(A, t, span = 6 * HOUR) { const a = Math.max(A.T[0], t - span); return t - a < HOUR ? 0 : (kmAt(A, t) - kmAt(A, a)) / ((t - a) / HOUR); }

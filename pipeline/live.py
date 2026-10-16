@@ -35,6 +35,7 @@ OPEN_LICENSES = {"CC0": "CC0", "CCBY": "CC BY", "CCBYNC": "CC BY-NC"}
 LIVE_DAYS = 3          # a fix within this many days counts as tracked right now
 STILL_KM, STILL_DAYS = 0.3, 3  # a tag that stayed this close to one spot this long: a dead animal or a dropped tag
 HISTORY_DAYS = 365     # how far back a newly followed animal's track starts
+EARLY_MAX = 1500       # older fixes (one a day, for the page's replay from the first fix), at most, per animal
 KEEP_DAYS = 30         # animals no longer listed stay in the file this long, for anyone who adopted them
 MAX_STUDIES = 40       # studies looked into per run
 PER_STUDY = 3          # animals listed from one study
@@ -633,6 +634,24 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
         a["frame"], a["lastRaw"] = new, int(max(f[0] for f in fx))
     print(f"study {sid} {r.get('name')!r}: {len(group)} animals (+{added}), "
           f"{sum(len(v) for v in got.values())} fixes", file=sys.stderr)
+    # once per animal: its fixes from before HISTORY_DAYS, one a day, so the page can replay it from the first
+    # fix; later fixes join them as they age out of the track (main, step 3)
+    cut_ms = (now_s - HISTORY_DAYS * 86400) * 1000
+    old = [a for a in group.values() if not a.get("earlyDone") and a.get("start") and a["start"] * 1000 < cut_ms - 2 * 86400000]
+    if old:
+        try:
+            early = mb.locations(sid, [a["local"] for a in old], min(a["start"] for a in old) * 1000, cut_ms, daily=True)
+            for a in old:
+                fx = early.get(a["local"], [])
+                if fx:
+                    df = fixes_frame(fx)
+                    if a.get("early"):
+                        df = pd.concat([pts_frame(a["early"]), df], ignore_index=True)
+                    a["early"] = frame_pts(clean(df, VMAX.get(state["species"].get(a["taxon"], {}).get("cls"), 30), 24))
+                a["earlyDone"] = True
+            print(f"  early fixes: {sum(len(v) for v in early.values())} for {len(old)} animals", file=sys.stderr)
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as e:
+            print(f"  early fixes: {e!r}, next run", file=sys.stderr)
     return added
 
 
@@ -770,7 +789,12 @@ def main():
         if df is None and a["pts"] is not None:
             df = pts_frame(a["pts"])
         if df is not None and len(df):
-            df = tiered(df, now, VMAX[state["species"][sci]["cls"]])
+            vmax = VMAX[state["species"][sci]["cls"]]
+            aged = df[(now - df.t).dt.total_seconds() / 86400 >= HISTORY_DAYS]
+            if len(aged):  # leaving the track: kept with the early fixes, one a day
+                a["early"] = frame_pts(clean(pd.concat([pts_frame(a["early"]), aged], ignore_index=True)
+                                             if a.get("early") else aged, vmax, 24))
+            df = tiered(df, now, vmax)
         if df is None or len(df) < 2:
             print(f"{k}: no usable track ({0 if df is None else len(df)} points), dropped", file=sys.stderr)
             del state["animals"][k]
@@ -802,6 +826,29 @@ def main():
                 groups[pi] = place_group(lab, lab.places[pi][1], lab.places[pi][2], lon, lat)
         return cache[key]
 
+    pcache = {}
+
+    def place_only(lon, lat):
+        key = (round(lon, 2), round(lat, 2))
+        if key not in pcache:
+            pi = lab.label(lon, lat)[0]
+            if pi not in groups:
+                groups[pi] = place_group(lab, lab.places[pi][1], lab.places[pi][2], lon, lat)
+            pcache[key] = (pi, -1, -1)
+        return pcache[key]
+
+    def early_fields(a, first):
+        """The fixes before the track, at most EARLY_MAX of them, with their places."""
+        if not a.get("early"):
+            return None
+        e = pts_frame(a["early"])
+        e = e[e.t < first]
+        e = e.iloc[::max(1, -(-len(e) // EARLY_MAX))].reset_index(drop=True)
+        if len(e) < 2:
+            return None
+        f = track_fields(e, [place_only(lo, la) for lo, la in zip(e.lon.values, e.lat.values)])
+        return {k: f[k] for k in ("t0", "t", "x", "y", "pl")}
+
     animals, species, sources = [], {}, {}
     for k, a in sorted(state["animals"].items(), key=lambda kv: -kv[1]["lastT"]):
         df = pts_frame(a["pts"])
@@ -825,6 +872,9 @@ def main():
             "live": {"study": a["study"], "ind": a["ind"], "since": int(a["since"]), "last": a["lastRaw"] // 1000,
                      "listed": listed(a, now_s), "quiet": a["lastT"] < now_s - LIVE_DAYS * 86400,
                      "dead": bool(a.get("dead")), "ended": bool(a.get("ended")), "still": bool(a.get("still"))}})
+        early = early_fields(a, df.t.iloc[0])
+        if early:
+            animals[-1]["early"] = early
     places, regions, cities = lab.tables()
     for rec in animals:
         rec["home"] = places[rec["home"]][0]

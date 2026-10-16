@@ -427,7 +427,7 @@ const Globe = (() => {
     const c = new THREE.Vector3(x, y, z); if (c.length() < 1e-6) c.set(1, 0, 0); c.normalize();
     let th = 0; for (const [lo, la] of lls) { const v = new THREE.Vector3(...ll2v(lo, la)); th = Math.max(th, v.angleTo(c)); }
     const [lo, la] = v2ll(c.x, c.y, c.z);
-    flyTo(lo, la, Math.min(distFor(Math.max(th, 0.06), frac), homeDist()));
+    flyTo(lo, la, Math.min(distFor(Math.max(th, 0.16), frac), homeDist()));
   }
 
   function slerpV(a, b, t) {

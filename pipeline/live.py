@@ -322,6 +322,16 @@ def download(url, path):
     path.write_bytes(body)
 
 
+def credit(s):
+    """A photo's author as Commons gives it, without the file names and wiki notes a derived photo's credit carries."""
+    s = re.sub(r"\S+\.(jpe?g|png|tiff?|svg)\b\s*:?\s*", "", s, flags=re.I)
+    s = re.sub(r"\bOriginal uploader was (.+?) at \S*wikipedia\S*", r"\1", s, flags=re.I)
+    s = re.sub(r"\s*\bderivative work:\s*", ", ", s, flags=re.I)
+    s = re.sub(r"\s*\(talk\)", "", s, flags=re.I)
+    s = re.sub(r"\s+", " ", s).strip(" :,")
+    return s if len(s) <= 80 else s[:79] + "…"
+
+
 def update_photos(state, names, curated, folder, now_s):
     """Photos of these species in folder/photos, recorded in state["photos"]; files stay from run to run."""
     photos = state.setdefault("photos", {})
@@ -333,6 +343,8 @@ def update_photos(state, names, curated, folder, now_s):
             return True
         if not p.get("file"):
             return p.get("checked", 0) < now_s - PHOTO_RETRY_DAYS * 86400
+        if p.get("by", "") != credit(p.get("by", "")):  # kept before credits were tidied
+            return True
         return not all((folder / p.get(k, "-")).exists() for k in PHOTO_SIZES)
 
     todo = [n for n in sorted(names) if needs(n)]
@@ -360,11 +372,8 @@ def update_photos(state, names, curated, folder, now_s):
             print(f"  {n}: no photo on Wikidata or Commons", file=sys.stderr)
             continue
         meta = {k: strip_html(str(v.get("value") or "")) for k, v in i.get("extmetadata", {}).items()}
-        # the author, without the file names a derived photo's credit lists
-        by = re.sub(r"\S+\.(jpe?g|png|tiff?|svg)\b\s*:?\s*", "", meta.get("Artist") or meta.get("Credit") or "",
-                    flags=re.I).strip(" :")
         rec = {"file": f, "asked": want(n), "page": i.get("descriptionurl") or "",
-               "by": by if len(by) <= 80 else by[:79] + "…",
+               "by": credit(meta.get("Artist") or meta.get("Credit") or ""),
                "lic": meta.get("LicenseShortName") or meta.get("UsageTerms") or "", "checked": now_s}
         if f in done:  # the same photo as another species (a subspecies), already here
             photos[n] = {**rec, **{k: done[f][k] for k in PHOTO_SIZES}}

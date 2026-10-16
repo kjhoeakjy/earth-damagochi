@@ -1,26 +1,19 @@
 /* ============================================================
-   UI — picking an animal, adoption, the pet panel, the observation log, the tag's signal, timeline.
+   UI — picking an animal, adoption, the pet panel, its record (오늘 · 여정 · 정보), the timeline.
    ============================================================ */
 const App = {
-  mode: "browse", sel: null, hover: null, q: "", onlySync: false, sort: "rec",
-  filters: { cls: new Set(), sp: new Set(), area: new Set(), visit: new Set(), age: new Set(), sex: new Set(), scale: new Set(), dur: new Set() },
+  mode: "browse", sel: null, hover: null, q: "", sort: "recent", filters: { sp: new Set(), now: new Set() },
   pet: null, A: null, dayView: null, tab: "day", lastK: -1, ended: false, t: 0, pos: null,
-  vis: new Set(), drafts: {}, editing: null, lastFix: null, lastSt: null, others: [], othersOpen: false, otherHover: null,
+  vis: new Set(), lastFix: null, lastSt: null, others: [], otherHover: null,
 };
+const TABS = ["day", "trip", "info"];
 const narrow = () => matchMedia("(max-width: 860px)").matches;
-const ageKey = A => !A.age ? "unk" : A.age === "adult" ? "adult" : "young";
 const FDEF = {
-  cls: { opts: () => Object.entries(CLS).map(([k, v]) => [k, v.ko, v.color]), get: A => A.S.cls },
-  sp: { opts: () => { const c = {}; DB.animals.forEach(A => c[A.sp] = (c[A.sp] || 0) + 1); return Object.keys(c).sort((a, b) => c[b] - c[a]).map(k => [k, SPECIES[k].ko.replace(/ \(.+\)$/, ""), CLS[SPECIES[k].cls].color]); }, get: A => A.sp },
-  area: { opts: () => Object.entries(AREA), get: A => A.area },
-  visit: { opts: () => GROUPS, get: A => A.visits, multi: true },
-  age: { opts: () => [["adult", "어른"], ["young", "어린 개체"], ["unk", "모름"]], get: ageKey },
-  sex: { opts: () => [["f", "암컷"], ["m", "수컷"], ["unk", "모름"]], get: A => A.sex || "unk" },
-  scale: { opts: () => [["s", "3천km 미만"], ["m", "3천~1만km"], ["l", "1만km 이상"]], get: A => A.km < 3000 ? "s" : A.km < 10000 ? "m" : "l" },
-  dur: { opts: () => [["s", "석 달 이하"], ["m", "석 달~1년"], ["l", "1년 넘게"]], get: A => A.days <= 92 ? "s" : A.days <= 366 ? "m" : "l" },
+  sp: { opts: () => { const c = {}; DB.animals.forEach(A => c[A.sp] = (c[A.sp] || 0) + 1); return Object.keys(c).sort((a, b) => c[b] - c[a]).map(k => [k, SPECIES[k].ko.replace(/ \(.+\)$/, "")]); }, get: A => A.sp },
+  // where the animal is now, broadly
+  now: { opts: () => GROUPS, get: A => A.nowGroups, multi: true },
 };
 function passes(A, skip) {
-  if (App.onlySync && !A.sync) return false;
   if (App.q) { const q = App.q.toLowerCase().trim(); if (q && !q.split(/\s+/).every(w => A.search.includes(w))) return false; }
   for (const [f, set] of Object.entries(App.filters)) {
     if (f === skip || !set.size) continue;
@@ -30,17 +23,13 @@ function passes(A, skip) {
   return true;
 }
 const visible = () => DB.animals.filter(A => passes(A));
-function score(A) { return (A.sync ? 1000 + Math.min(A.sync.left, 200) : 0) + Math.log10(A.km + 10) * 40 + Math.min(A.placeOrder.length, 20) * 6 + (A.age ? 10 : 0) + (A.S.iucn !== "LC" ? 15 : 0); }
-const SORTS = {
-  rec: (a, b) => score(b) - score(a),
-  sync: (a, b) => (b.sync ? 1 : 0) - (a.sync ? 1 : 0) || (b.sync ? b.sync.left : 0) - (a.sync ? a.sync.left : 0) || b.km - a.km,
-  km: (a, b) => b.km - a.km, far: (a, b) => b.maxFromHome - a.maxFromHome, days: (a, b) => b.days - a.days,
-  places: (a, b) => b.placeOrder.length - a.placeOrder.length,
-};
+const SORTS = { recent: (a, b) => b.t1 - a.t1, km: (a, b) => b.km - a.km, days: (a, b) => trackDays(b) - trackDays(a) };
 const shortName = A => A.S.ko.replace(/ \(.+\)$/, "");
-const tagShort = A => String(A.tag).replace(/^(Sooty|SoTern|AsFr|MaBo)/, "").replace(/ \[.+\]$/, "").replace(/^Brown pelican.*/, "BRPE-1");
 const hhmm = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 const pct = x => Math.round(x * 100);
+const sexAgeKo = A => [A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : "", ageKo(A)].filter(Boolean).join(" · ") || "기록 없음";
+// links from the data files open only on the web
+const href = u => /^https:\/\//.test(u || "") ? u : "#";
 
 /* colours for the ways a position was taken; paler = less precise */
 const QBASE = { GPS: [247, 201, 107], "Fastloc GPS": [172, 216, 132], "아르고스": [99, 210, 222], "햇빛 세기로 추정": [195, 166, 255] };
@@ -54,17 +43,34 @@ function mixHTML(mix) {
 const ICO = (p, w = 1.7) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
 const HL_ICON = {
   tag: '<path d="M4 12.5 11.5 5H19v7.5L11.5 20z"/><circle cx="15.3" cy="8.7" r="1.3"/>',
-  stamp: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5" stroke-dasharray="2 2"/>',
+  place: '<path d="M12 21s-6.5-6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15 12 21 12 21z"/><path d="M9.5 10.5h5"/>',
   line: '<path d="M3 12h18" stroke-dasharray="3 2"/><path d="M9 7l3-3 3 3M9 17l3 3 3-3"/>',
   pin: '<path d="M12 21s-6.5-6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/>',
   route: '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6.5a3 3 0 0 0 0-6h-5a3 3 0 0 1 0-6H16"/>',
   home: '<path d="M4 11.5 12 5l8 6.5V20H4z"/><path d="M10 20v-5h4v5"/>',
   warn: '<path d="M12 4 21 19H3z"/><path d="M12 10v4M12 16.5v.01"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
   none: '<circle cx="12" cy="12" r="8"/><path d="M7 17 17 7"/>',
   end: '<path d="M6 4v16M6 5h11l-2.5 4L17 13H6"/>',
 };
-const ARROW_L = ICO('<path d="m14.5 6-6 6 6 6"/>', 2), ARROW_R = ICO('<path d="m9.5 6 6 6-6 6"/>', 2);
+
+/* ---------- species photos (Wikimedia Commons, kept by pipeline/live.py) ---------- */
+const photoOf = S => (S && (DB.photos[S.sci] || DB.photos[S.sci.split(" ").slice(0, 2).join(" ")])) || null;
+// shown while a photo loads, and in its place when there is none
+const CLS_ICON = {
+  bird: '<path d="M2.5 12c3-1.5 5.8-1 8 1.4 1.9-3.3 5-5.3 11-5.6-3 1.7-5 4.3-6 7.4-.9 2.6-3.7 3.6-6.2 2.5"/>',
+  sea: '<path d="M3 13.5c2 3.6 6.6 5.3 10.7 4.3 3-.7 5.1-2.9 5.7-5.4l2.6-2.2-2.7.3C17.8 7.7 14.9 6.4 11.4 6.9 7 7.5 3.8 10 3 13.5z"/>',
+  fish: '<path d="M3 12c3-4 8-5.5 12.5-3.5L21 6v12l-5.5-2.5C11 17.5 6 16 3 12z"/>',
+  land: '<path d="M6 20v-6l-2-4 3-5 2 4h6l2-4 3 5-2 4v6"/>',
+};
+function photoHTML(S, size, lazy = false) {
+  const p = photoOf(S);
+  return `<span class="ph${p ? "" : " none"}" style="--c:${CLS[S.cls].color}">${ICO(CLS_ICON[S.cls] || CLS_ICON.bird, 1.4)}${p ? `<img src="${esc(p[size])}" alt="${esc(S.ko)}"${lazy ? ' loading="lazy"' : ""} decoding="async">` : ""}</span>`;
+}
+// a photo shows the species, not this animal; its author and licence link to its Commons page
+function creditHTML(S) {
+  const p = photoOf(S);
+  return p ? `종 사진 · <a href="${esc(href(p.page))}" target="_blank" rel="noopener">${esc([p.by || "작가 미상", p.lic].filter(Boolean).join(" · "))}</a>` : "";
+}
 
 /* ---------- toast ---------- */
 let toastT = 0, toastAt = 0;
@@ -81,13 +87,13 @@ const fixesBetween = (A, a, b) => { let n = 0; for (let i = idxAt(A, a) + 1, e =
 /* ============================================================ browse ============================================================ */
 function renderFilters() {
   for (const box of $$("#filters .chips")) {
-    const f = box.dataset.f, def = FDEF[f];
+    const f = box.dataset.f, def = FDEF[f], set = App.filters[f];
     const base = DB.animals.filter(A => passes(A, f));
-    box.innerHTML = def.opts().map(([k, label, color]) => {
-      const n = base.filter(A => def.multi ? def.get(A).has(k) : def.get(A) === k).length;
-      if (!n && !App.filters[f].has(k) && (f === "visit" || f === "sp")) return "";
-      return `<button class="chip" type="button" data-k="${k}" aria-pressed="${App.filters[f].has(k)}" ${n ? "" : 'style="opacity:.45"'}>${color ? `<span class="sw" style="background:${color}"></span>` : ""}${esc(label)} <span class="n">${n}</span></button>`;
-    }).join("");
+    const opts = def.opts().map(([k, label]) => [k, label, base.filter(A => def.multi ? def.get(A).has(k) : def.get(A) === k).length])
+      .filter(([k, , n]) => n || set.has(k));
+    box.innerHTML = opts.map(([k, label, n]) => `<button class="chip" type="button" data-k="${k}" aria-pressed="${set.has(k)}">${esc(label)} <span class="n">${n}</span></button>`).join("");
+    // one choice is no choice
+    box.parentElement.hidden = opts.length < 2 && !set.size;
   }
 }
 function renderList() {
@@ -95,27 +101,24 @@ function renderList() {
   $("#count").textContent = `${list.length}마리` + (list.length !== DB.animals.length ? ` / 전체 ${DB.animals.length}마리` : "");
   const el = $("#list");
   App.vis = new Set(list.map(A => A.id));
-  if (!list.length) { el.innerHTML = `<div class="empty">조건에 맞는 동물이 없어요.<br><button class="btn small" type="button" id="resetF" style="margin-top:10px">필터 모두 지우기</button></div>`; $("#resetF").onclick = resetFilters; refreshCand(); return; }
+  if (!DB.animals.length) { el.innerHTML = `<div class="empty">${DB.liveFailed ? "지금 추적 중인 동물을 불러오지 못했어요." : "지금 추적 중인 동물이 없어요."}</div>`; refreshCand(); return; }
+  if (!list.length) { el.innerHTML = `<div class="empty">조건에 맞는 동물이 없어요.<br><button class="btn small" type="button" id="resetF" style="margin-top:10px">조건 모두 지우기</button></div>`; $("#resetF").onclick = resetFilters; refreshCand(); return; }
+  const now = Date.now();
   el.innerHTML = list.map(A => {
-    const s = A.sync, pills = [];
-    if (s) pills.push(`<span class="pill sync">${s.k}년 전 오늘 · ${esc(A.nowPlace || "")}</span>`);
-    if (A.age) pills.push(`<span class="pill">${A.age === "adult" ? "어른" : "어린 개체"}</span>`);
+    const pills = [`<span class="pill live"><i aria-hidden="true"></i>${esc(Story.agoKo(now - A.t1))} 신호</span>`];
+    if (agePill(A)) pills.push(`<span class="pill">${agePill(A)}</span>`);
     if (A.sex) pills.push(`<span class="pill">${A.sex === "f" ? "암컷" : "수컷"}</span>`);
-    if (A.status.length) pills.push(`<span class="pill" title="배터리 전압과 상태 신호 포함">상태 신호</span>`);
-    if (A.S.iucn !== "LC") pills.push(`<span class="pill iucn ${A.S.iucn}" title="IUCN 적색목록 ${IUCN[A.S.iucn]}">${A.S.iucn}</span>`);
-    const to = A.endName && A.endName !== placeName(A.placeOrder[0]) ? ` → ${esc(A.endName)}` : "";
-    return `<button class="cand" type="button" role="option" data-id="${A.id}" aria-selected="${App.sel === A.id}">
-      <canvas width="104" height="104" data-look="${A.S.look}" data-cls="${A.S.cls}"></canvas>
-      <div style="min-width:0"><div class="t">${esc(shortName(A))} <span class="id">#${esc(tagShort(A))}</span></div>
-        <div class="s">${esc(A.home)}${to} · ${durKo(A.days)}</div><div class="m">${pills.join("")}</div></div>
-      <div class="scale"><b>${fmt(A.km)}</b>km</div></button>`;
+    if (IUCN[A.S.iucn] && A.S.iucn !== "LC") pills.push(`<span class="pill iucn ${A.S.iucn}" title="IUCN 적색목록 ${IUCN[A.S.iucn]}">${A.S.iucn}</span>`);
+    return `<button class="cand" type="button" role="option" data-id="${A.id}" aria-selected="${App.sel === A.id}">${photoHTML(A.S, "s", true)}
+      <div style="min-width:0"><div class="t">${esc(shortName(A))} <span class="id">${esc(nameOf(A) || "#" + tagShort(A))}</span></div>
+        <div class="s">지금 ${esc(A.nowPlace || A.endName || "")} · ${esc(trackAgeKo(A))}</div><div class="m">${pills.join("")}</div></div>
+      <div class="scale"${trackCut(A) ? ` title="${esc(dateKo(A.T[0]))}부터"` : ""}><b>${fmt(A.km)}</b>km</div></button>`;
   }).join("");
-  for (const cv of $$("canvas", el)) Critter.portrait(cv, cv.dataset.look, cv.dataset.cls);
   refreshCand();
 }
 // glow state of the points on the globe: hidden by filters, normal, hovered, selected
 function refreshCand() { Globe.candState(id => !App.vis.has(id) ? -1 : id === App.sel ? 2 : id === App.hover ? 1 : 0); }
-function resetFilters() { for (const s of Object.values(App.filters)) s.clear(); App.q = ""; $("#q").value = ""; App.onlySync = false; $("#onlySync").checked = false; refreshBrowse(); }
+function resetFilters() { for (const s of Object.values(App.filters)) s.clear(); App.q = ""; $("#q").value = ""; refreshBrowse(); }
 function refreshBrowse() { renderFilters(); renderList(); }
 
 function select(id, fly = true) {
@@ -140,47 +143,52 @@ function select(id, fly = true) {
 }
 
 function renderIntro() {
-  const nSync = DB.animals.filter(A => A.sync).length;
-  const counts = Object.keys(CLS).map(k => [k, DB.animals.filter(A => A.S.cls === k).length]);
+  const n = DB.animals.length, now = Date.now();
+  $("#detailFoot").hidden = true;
+  if (!n) {
+    $("#detailBody").innerHTML = `<div class="intro"><h2>지금 추적 중인 동물이 없어요</h2>
+      <p>${DB.liveFailed ? "실시간 위치를 불러오지 못했어요. 잠시 뒤에 새로고침해 주세요." : "사흘 안에 위치를 보낸 동물이 없어요. 새 위치는 6시간마다 받아 와요."}</p></div>`;
+    return;
+  }
+  const last = Math.max(...DB.animals.map(A => A.t1));
   $("#detailBody").innerHTML = `<div class="intro">
-    <h2>위성으로 추적한 동물 ${DB.animals.length}마리</h2>
-    <p>한 마리를 입양하면 그 동물의 실제 이동 기록을 날마다 따라가요. 목록이나 지구본의 점을 눌러 고르세요.</p>
-    <div class="legend">${counts.map(([k, n]) => `<span><i style="background:${CLS[k].color}"></i>${CLS[k].ko} ${n}</span>`).join("")}</div>
-    <div class="callout"><b>오늘 날짜에 기록이 있는 동물 ${nSync}마리</b><br>몇 년 전 오늘 있던 자리에서 시작해요.</div>
+    <h2>지금 추적 중인 동물 ${n}마리</h2>
+    <p>한 마리를 입양하면 그 동물의 태그가 보내는 위치를 실제 시간으로 따라가요. 목록이나 지구본의 점을 눌러 고르세요.</p>
+    <div class="callout live"><b>가장 최근 신호 ${esc(Story.agoKo(now - last))}</b><br>사흘 안에 위치를 보낸 동물만 있어요. 새 위치는 6시간마다 받아 와요.</div>
     <button class="btn" type="button" id="luckyBtn">무작위로 하나 보기</button>
   </div>`;
-  $("#detailFoot").hidden = true;
-  $("#luckyBtn").onclick = () => { const c = visible().filter(A => A.sync); const pool = c.length ? c : DB.animals.filter(A => A.sync); select(pool[Math.floor(Math.random() * pool.length)].id); };
+  $("#luckyBtn").onclick = () => { const c = visible(); const pool = c.length ? c : DB.animals; select(pool[Math.floor(Math.random() * pool.length)].id); };
+}
+// the study and its terms, as the data's owners ask to be credited (older files kept HTML in the citation)
+function srcHTML(src, S) {
+  const cite = String(src.citation || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(), p = S && photoOf(S);
+  return `<div class="src">${p ? `<p>${creditHTML(S)} (위키미디어 공용)</p>` : ""}
+    <p>자료: ${esc(src.who || "")} · <a href="${esc(href(src.url))}" target="_blank" rel="noopener">${esc(src.title || "")}</a> (${esc([src.via, src.license].filter(Boolean).join(" · "))})${src.note ? `<br>${esc(src.note)}` : ""}</p>
+    ${cite ? `<details class="cite"><summary>인용 방법</summary><p>${esc(cite)}</p></details>` : ""}</div>`;
 }
 function renderDetail() {
   const A = App.sel && DB.byId.get(App.sel);
   if (!A) return renderIntro();
-  const S = A.S, s = A.sync, src = A.src_;
-  const places = A.placeOrder.map(placeName);
-  const t0 = A.T[0], t1 = A.t1;
+  const S = A.S, now = Date.now(), places = A.placeOrder.map(placeName), t0 = trackSince(A);
   $("#detailBody").innerHTML = `<div class="body">
-    <div class="dhead"><canvas width="168" height="168"></canvas><div>
-      <div class="eyebrow">${CLS[S.cls].ko} · 태그 #${esc(tagShort(A))}</div>
-      <h2>${esc(S.ko)}</h2><div class="sci">${esc(S.sci)} · ${esc(S.en)}</div></div>
-      <button class="iconbtn dclose" type="button" id="dClose" aria-label="닫기" title="닫기">${ICO('<path d="M6 6l12 12M18 6 6 18"/>', 2)}</button></div>
-    ${s ? `<div class="callout"><b>${s.k}년 전 오늘</b> ${esc(A.nowPlace || "")}에 있었어요 · 남은 기록 ${Math.floor(s.left)}일</div>`
-      : `<div class="callout">오늘 날짜 기록이 없어 첫 기록부터 시작해요.</div>`}
+    <figure class="dphoto">${photoHTML(S, "l")}
+      <button class="iconbtn dclose" type="button" id="dClose" aria-label="닫기" title="닫기">${ICO('<path d="M6 6l12 12M18 6 6 18"/>', 2)}</button>
+      ${photoOf(S) ? `<figcaption>${creditHTML(S)}</figcaption>` : ""}</figure>
+    <div class="dhead"><div class="eyebrow">${CLS[S.cls].ko} · #${esc(tagShort(A))}</div>
+      <h2>${esc(S.ko)}</h2><div class="sci">${esc(S.sci)}${S.en && S.en !== S.ko ? ` · ${esc(S.en)}` : ""}</div></div>
+    ${A.open ? `<div class="callout live"><b>지금 추적 중</b> · 마지막 신호 ${esc(Story.agoKo(now - A.t1))}${A.nowPlace ? ` · ${esc(A.nowPlace)}` : ""}</div>`
+      : `<div class="callout">실시간 목록에서 빠진 기록이에요 · 마지막 신호 ${dateKo(A.t1)}</div>`}
     <dl class="kv">
-      <dt>출발지</dt><dd>${esc(AREA[A.area].startsWith(A.home) ? AREA[A.area] : `${A.home} (${AREA[A.area]})`)}</dd>
-      <dt>성별</dt><dd>${A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : "기록 없음"}</dd>
-      <dt>나이</dt><dd>${esc(A.ageText || "기록 없음")}${A.withCalf ? " · 새끼 동반" : ""}</dd>
-      <dt>기록 기간</dt><dd>${dateKo(t0)} ~ ${dateKo(t1)} (${durKo(A.days)})</dd>
-      <dt>이동 거리</dt><dd>${fmt(A.km)}km · 출발지에서 가장 멀리 ${fmt(A.maxFromHome)}km</dd>
+      ${nameOf(A) ? `<dt>별명</dt><dd>${esc(nameOf(A))} <span class="faint">연구자가 붙인 이름</span></dd>` : ""}
+      <dt>성별·나이</dt><dd>${esc(sexAgeKo(A))}</dd>
+      <dt>추적</dt><dd>${A.open ? `${dateKo(t0)}부터 · ${esc(trackAgeKo(A))}` : `${dateKo(t0)} ~ ${dateKo(A.t1)}`}</dd>
+      <dt>이동 거리</dt><dd>${fmt(A.km)}km${trackCut(A) ? ` <span class="faint">${dateKo(A.T[0])}부터</span>` : ""}</dd>
       <dt>지나간 곳</dt><dd>${places.slice(0, 8).map(esc).join(", ")}${places.length > 8 ? ` 외 ${places.length - 8}곳` : ""}</dd>
-      <dt>보전 상태</dt><dd>IUCN ${S.iucn} (${IUCN[S.iucn]})</dd>
+      <dt>보전 상태</dt><dd>${esc(iucnKo(S.iucn))}</dd>
     </dl>
-    <details class="ending"><summary>기록에 들어 있는 것</summary>${rowsHTML(Story.contents(A))}
-      <div class="sub-h">위치 정확도</div>${mixHTML(Story.qualMix(A))}</details>
-    <details class="ending"><summary>기록이 끝난 방식</summary>${rowsHTML(Story.ending(A))}</details>
-    <ul class="facts">${S.facts.map(f => `<li>${esc(f)}</li>`).join("")}</ul>
-    <div class="src">자료: ${esc(src.who || "")} · <a href="${esc(src.url || "#")}" target="_blank" rel="noopener">${esc(src.title || "")}</a> (${esc(src.via || "")})${src.note ? `<br>${esc(src.note)}` : ""}</div>
+    ${S.facts.length ? `<ul class="facts">${S.facts.map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+    ${srcHTML(A.src_)}
   </div>`;
-  Critter.portrait($("#detailBody canvas"), S.look, S.cls);
   $("#dClose").onclick = () => select(null);
   const foot = $("#detailFoot"); foot.hidden = false;
   const full = Store.state.pets.length >= 6, have = Store.state.pets.some(p => p.aid === A.id);
@@ -193,77 +201,45 @@ function renderDetail() {
 /* ============================================================ adoption ============================================================ */
 const NAMES = { bird: ["나비", "바람", "하늘", "구름"], sea: ["나비", "파도", "물결", "바다"], fish: ["나비", "파랑", "물결", "바다"], land: ["나비", "솔", "보리", "단풍"] };
 function openAdopt(A) {
-  const s = A.sync, m = $("#mAdopt"), sh = $("#adSheet");
-  const sug = NAMES[A.S.cls];
-  let mode = s ? "sync" : "start", pace = 1, name = sug[0];
-  const paceRow = () => mode === "start" ? `<div class="field"><label>속도</label><div class="chips" id="adPace">
-      ${PACES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pace === v}">${l}</button>`).join("")}</div></div>` : "";
+  const m = $("#mAdopt"), sh = $("#adSheet");
+  // the researchers' name for it first
+  const nick = nameOf(A), sug = [...new Set([nick, ...NAMES[A.S.cls]].filter(Boolean))].slice(0, 4);
+  let name = sug[0];
   const render = () => {
     sh.innerHTML = `
-      <h2 id="adTitle">${esc(shortName(A))} 입양</h2>
+      <div class="adhead">${photoHTML(A.S, "s")}<div><h2 id="adTitle">${esc(shortName(A))} 입양</h2>
+        <div class="faint small">태그 #${esc(tagShort(A))}${A.nowPlace ? ` · 지금 ${esc(A.nowPlace)}` : ""}</div></div></div>
       <div class="field"><label for="adName">이름</label><input id="adName" maxlength="12" value="${esc(name)}" autocomplete="off">
-        <div class="namechips">${sug.map(n => `<button class="chip" type="button" data-n="${esc(n)}" aria-pressed="${n === name}">${esc(n)}</button>`).join("")}</div></div>
-      <div class="field"><label>시작</label><div class="chips" id="adMode">
-        ${s ? `<button class="chip" type="button" data-m="sync" aria-pressed="${mode === "sync"}">${s.k}년 전 오늘 · ${esc(A.nowPlace || "")}</button>` : ""}
-        <button class="chip" type="button" data-m="start" aria-pressed="${mode === "start"}">첫 기록 · ${dateKo(A.T[0])}</button></div>
-        <div class="faint small">${mode === "sync" ? `실제 시간으로 흘러요 · 남은 기록 ${Math.floor(s.left)}일` : `${durKo(A.days)} 기록을 처음부터 따라가요`}</div></div>
-      ${paceRow()}
+        <div class="namechips">${sug.map(n => `<button class="chip" type="button" data-n="${esc(n)}" aria-pressed="${n === name}">${esc(n)}</button>`).join("")}</div>
+        ${nick ? `<div class="faint small">${esc(nick)}: 연구자가 붙인 이름</div>` : ""}</div>
+      <p class="muted small">입양하면 지금부터 이 동물의 태그가 보내는 위치를 실제 시간으로 따라가요. 마지막 신호 ${esc(Story.agoKo(Date.now() - A.t1))}.</p>
       <div class="actions"><button class="btn" type="button" id="adCancel">취소</button><button class="btn primary" type="button" id="adOk">입양하기</button></div>`;
     $("#adName").oninput = e => { name = e.target.value; $$(".namechips .chip", sh).forEach(c => c.setAttribute("aria-pressed", c.dataset.n === name)); };
     $$(".namechips .chip", sh).forEach(c => c.onclick = () => { name = c.dataset.n; render(); });
-    $$("#adMode .chip", sh).forEach(c => c.onclick = () => { mode = c.dataset.m; render(); });
-    $$("#adPace .chip", sh).forEach(c => c.onclick = () => { pace = +c.dataset.v; render(); });
     $("#adCancel").onclick = () => { m.hidden = true; };
     $("#adOk").onclick = () => {
-      const nm = (name || "").trim().slice(0, 12) || sug[0];
-      const now = Date.now();
-      const anchorTrack = mode === "sync" ? s.t : A.T[0];
-      const pet = { id: "p" + now.toString(36), aid: A.id, name: nm, adoptedAt: now, anchorReal: now, mode, pace: mode === "sync" ? 1 : pace, anchorTrack, seenT: anchorTrack, k: s ? s.k : 0, bond: { streak: 0, visits: 0 }, memos: {} };
-      Store.state.pets.push(pet); Store.state.active = pet.id; Story.visit(pet, now); Store.save();
-      m.hidden = true; showCert(pet, true);
+      const nm = (name || "").trim().slice(0, 12) || sug[0], now = Date.now();
+      // a live pet's clock is the real time; a record that is no longer live starts at its beginning
+      const live = A.open, anchorTrack = live ? now : A.T[0];
+      const pet = { id: "p" + now.toString(36), aid: A.id, name: nm, adoptedAt: now, anchorReal: now, mode: live ? "live" : "start", pace: 1, anchorTrack, seenT: anchorTrack, k: 0 };
+      if (live) pet.liveSeen = A.t1;
+      Store.state.pets.push(pet); Store.state.active = pet.id; Store.save(); keepSnaps();
+      m.hidden = true; enterPet();
+      toast(`${esc(josa(nm, "을/를"))} 입양했어요`);
     };
   };
   render(); m.hidden = false; setTimeout(() => $("#adName").focus(), 30);
   m.onclick = e => { if (e.target === m) m.hidden = true; };
 }
-function guilloche(cv) {
-  const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1);
-  cv.width = r.width * d; cv.height = r.height * d;
-  const g = cv.getContext("2d"), W = cv.width, H = cv.height;
-  g.strokeStyle = "rgba(150,105,55,.22)"; g.lineWidth = d * .7;
-  for (const [cx, cy, R, k] of [[W / 2, H / 2, Math.min(W, H) * .44, 7], [W / 2, H / 2, Math.min(W, H) * .3, 11]]) {
-    g.beginPath();
-    for (let i = 0; i <= 2400; i++) { const t = i / 2400 * Math.PI * 2 * 9; const rr = R * (.82 + .18 * Math.sin(k * t / 9)); const x = cx + Math.cos(t) * rr * (W / H) * .9, y = cy + Math.sin(t) * rr * .9 + Math.sin(t * 13) * R * .02; i ? g.lineTo(x, y) : g.moveTo(x, y); }
-    g.stroke();
-  }
-  g.strokeStyle = "rgba(150,105,55,.35)"; g.lineWidth = d * 1.2; g.strokeRect(W * .03, H * .045, W * .94, H * .91);
-  g.lineWidth = d * .6; g.strokeRect(W * .045, H * .065, W * .91, H * .87);
-}
-function showCert(pet, fresh) {
-  const A = DB.byId.get(pet.aid), S = A.S, m = $("#mCert");
-  $("#cert").innerHTML = `<canvas class="guil"></canvas><div class="in">
-    <div class="ttl">입양 증서<small>CERTIFICATE OF ADOPTION</small></div>
-    <div class="who">${esc(pet.name)}</div>
-    <div class="line">${esc(S.ko)} <i>${esc(S.sci)}</i> · 태그 #${esc(tagShort(A))}<br>${esc(A.home)} 출발 · 자료 ${esc(A.src_.who || "")}</div>
-    <div class="grid"><div>입양한 날<b>${dateKo(pet.adoptedAt)}</b></div><div>시작 기록<b>${dateKo(pet.anchorTrack)}</b></div><div>전체 이동<b>${fmt(A.km)}km</b></div></div>
-  </div>
-  <svg class="seal" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="#b7432a" opacity=".88"/><circle cx="50" cy="50" r="38" fill="none" stroke="#f6dccd" stroke-width="1.5" stroke-dasharray="3 3"/>
-    <text x="50" y="47" text-anchor="middle" font-family="Diphylleia, serif" font-size="16" fill="#fbe9de">나비야</text><text x="50" y="66" text-anchor="middle" font-family="Diphylleia, serif" font-size="16" fill="#fbe9de">나비야</text></svg>`;
-  m.hidden = false;
-  requestAnimationFrame(() => guilloche($("#cert canvas")));
-  $("#certGo").textContent = fresh ? "시작하기" : "닫기";
-  $("#certGo").onclick = () => { m.hidden = true; if (fresh) enterPet(); };
-  m.onclick = e => { if (e.target === m && !fresh) m.hidden = true; };
-}
 
 /* ============================================================ pet mode ============================================================ */
-function activePet() { const st = Store.state; return st.pets.find(p => p.id === st.active) || st.pets[0] || null; }
+// pets whose record is here (a live one can be missing while the live file doesn't load and no copy was kept)
+const petsHere = () => Store.state.pets.filter(p => DB.byId.has(p.aid));
+function activePet() { const st = Store.state, ps = petsHere(); return ps.find(p => p.id === st.active) || ps[0] || null; }
 function enterPet() {
   const pet = activePet(); if (!pet) return enterBrowse();
-  // notes kept by older versions were called replies; points, levels and read marks are gone
-  pet.memos = pet.memos || pet.replies || {}; delete pet.replies; delete pet.seen;
-  if (pet.bond) { delete pet.bond.pts; delete pet.bond.day; }
-  App.mode = "pet"; App.pet = pet; App.A = DB.byId.get(pet.aid); App.lastK = -1; App.dayView = null; App.lastFix = App.lastSt = null; App.editing = null;
+  App.mode = "pet"; App.pet = pet; App.A = DB.byId.get(pet.aid); App.lastK = -1; App.dayView = null; App.lastFix = App.lastSt = null;
+  if (!TABS.includes(App.tab)) App.tab = "day";
   document.body.dataset.mode = "pet"; document.body.removeAttribute("data-sel");
   $("#picker").hidden = true; $("#detail").hidden = true; $("#pet").hidden = false; $("#journal").hidden = false; $("#timeline").hidden = false;
   Globe.showCandidates(false); Globe.layout();
@@ -274,10 +250,13 @@ function enterPet() {
   Globe.flyTo(p.lon, p.lat, Math.min(Globe.homeDist(), Globe.distFor(.35, .4)), 1800);
   Globe.setFollow(true, () => { const q = posAt(App.A, Story.petClock(App.pet, App.A)); return [q.lon, q.lat]; });
   $("#cFollow").setAttribute("aria-pressed", "true");
-  Story.visit(pet, now);
-  const nNew = pet.seenT != null && pet.seenT < t ? fixesBetween(A, pet.seenT, t) : 0;
-  pet.seenT = t; Store.save();
-  if (nNew) setTimeout(() => toast(`지난번 이후 새 위치 기록 <b>${fmt(nNew)}</b>개`), 900);
+  // a live record grows between visits; a past one is read up to the pet's clock
+  const nNew = pet.mode === "live" ? (pet.liveSeen != null && pet.liveSeen < A.t1 ? fixesBetween(A, pet.liveSeen, A.t1) : 0)
+    : pet.seenT != null && pet.seenT < t ? fixesBetween(A, pet.seenT, t) : 0;
+  pet.seenT = t; if (pet.mode === "live") pet.liveSeen = A.t1; Store.save();
+  if (A.live && DB.liveFailed) setTimeout(() => toast("최신 위치를 받아 오지 못해서 지난번에 받은 기록으로 보여 줘요", 5200), 900);
+  else if (nNew) setTimeout(() => toast(`지난번 이후 새 위치 기록 <b>${fmt(nNew)}</b>개`), 900);
+  $("#petPhoto").dataset.sp = "";
   renderModeBtn(); renderSwitch(); tick(true);
   $$(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === App.tab));
 }
@@ -298,7 +277,7 @@ function renderModeBtn() {
   else b.hidden = true;
 }
 function renderSwitch() {
-  const el = $("#petSwitch"), pets = Store.state.pets;
+  const el = $("#petSwitch"), pets = petsHere();
   el.hidden = pets.length < 2;
   el.innerHTML = pets.map(p => `<button class="chip" type="button" data-p="${p.id}" aria-pressed="${p.id === App.pet.id}">${esc(p.name)}</button>`).join("");
   $$(".chip", el).forEach(c => c.onclick = () => { Store.state.active = c.dataset.p; Store.save(); enterPet(); });
@@ -324,7 +303,6 @@ function tick(force) {
     const prev = App.lastK; App.lastK = k;
     const follow = App.dayView == null || App.dayView === prev;
     if (follow) App.dayView = k;
-    if (prev >= 0 && k > prev && !newFix) toast(`새 일지 · ${dateKo(buildDays(A)[k].s, false)}`);
     renderTimeline();
     tab = tab || (follow && App.tab === "day" ? "reset" : "keep");
   } else if (newFix || newSt) {
@@ -342,13 +320,13 @@ function announce(fi, st) {
   const A = App.A, pet = App.pet;
   if (document.hidden || pet.pace > 24 || performance.now() - toastAt < 2500) return;
   if (st && st.c !== "a") toast(`태그 상태 신호 · <b>${MORT[st.c]}</b> · 배터리 ${fmt(st.v)}mV`, 5200);
-  else if (fi >= 0) toast(`새 위치 기록 · ${timeKo(A.T[fi])} · ${esc(placeName(runAt(A.pl, fi)) || "")} <span class="faint">${esc(QUAL[A.QS[fi]].kind)}</span>`);
+  else if (fi >= 0) toast(`새 위치 · ${timeKo(A.T[fi])} · ${esc(placeName(runAt(A.pl, fi)) || "")}`);
   else if (st) toast(`태그 상태 신호 · ${MORT[st.c]} · 배터리 ${fmt(st.v)}mV`);
 }
 function renderClock() {
   const c = $("#clock"), now = Date.now();
   if (App.mode === "pet" && App.pet) {
-    const pet = App.pet, rel = pet.mode === "sync" ? `${pet.k}년 전 오늘` : `기록 ${App.lastK + 1}일째${pet.pace > 1 ? " · " + paceKo(pet.pace) : ""}`;
+    const pet = App.pet, rel = pet.mode === "live" ? (App.ended ? "실시간 기록 끝" : "실시간") : pet.mode === "sync" ? `${pet.k}년 전 오늘` : `기록 ${App.lastK + 1}일째${pet.pace > 1 ? " · " + paceKo(pet.pace) : ""}`;
     c.innerHTML = `<b>${dateKo(App.t)} ${timeKo(App.t)}</b><br>${rel}`;
   } else c.innerHTML = `<b>${dateKoW(now)}</b> ${timeKo(now)}`;
 }
@@ -357,18 +335,14 @@ function renderPet(force) {
   const pet = App.pet, A = App.A;
   if (!force && performance.now() - petRenderT < 15000) { updatePetStatus(); return; }
   petRenderT = performance.now();
+  const ph = $("#petPhoto");
+  if (ph.dataset.sp !== A.sp) { ph.dataset.sp = A.sp; ph.innerHTML = photoHTML(A.S, "l") + (photoOf(A.S) ? `<figcaption>${creditHTML(A.S)}</figcaption>` : ""); }
   $("#petName").textContent = pet.name;
-  $("#petSub").textContent = `${shortName(A)} #${tagShort(A)} · ${A.home} 출발`;
+  $("#petSub").textContent = `${shortName(A)} #${tagShort(A)} · ${A.open ? trackAgeKo(A) : A.live ? `추적 ${durKo((A.t1 - trackSince(A)) / DAY)}` : `${A.home} 출발`}`;
   const kmT = kmAt(A, App.t) - kmAt(A, pet.anchorTrack);
   const together = Math.max(1, Math.floor((midnight(Date.now()) - midnight(pet.adoptedAt)) / DAY) + 1);
-  const home = hav(A.X[0], A.Y[0], App.pos.lon, App.pos.lat);
-  let raw = 0; for (let i = 0, n = idxAt(A, App.t); i <= n; i++) raw += A.NF[i];
-  $("#petStats").innerHTML = [
-    ["입양 후", fmt(together), "일"], ["입양 후 이동", kmFmt(Math.max(0, kmT)), "km"],
-    ["출발지에서", kmFmt(home), "km"], ["위치 기록", fmt(raw), "개"],
-  ].map(([k2, v, u]) => `<div class="stat"><div class="k">${k2}</div><div class="v">${v}<small>${u}</small></div></div>`).join("");
-  const b = pet.bond || {};
-  $("#bond").innerHTML = `방문 <b>${fmt(b.visits || 1)}</b>일 · 연속 <b>${fmt(b.streak || 1)}</b>일 · 메모 <b>${fmt(Object.keys(pet.memos).length)}</b>개`;
+  $("#petStats").innerHTML = [["입양 후", fmt(together), "일"], ["입양 후 이동", kmFmt(Math.max(0, kmT)), "km"]]
+    .map(([k2, v, u]) => `<div class="stat"><div class="k">${k2}</div><div class="v">${v}<small>${u}</small></div></div>`).join("");
   if (!App.otherHover) renderOthers();
   updatePetStatus();
 }
@@ -389,15 +363,17 @@ function updatePetStatus() {
   const alt = sunAlt(p.lon, p.lat, t), rising = sunAlt(p.lon, p.lat, t + 20 * MIN) > alt;
   const tod = alt > 6 ? "낮" : alt > Story.DARK ? (rising ? "해 뜬 무렵" : "해 질 무렵") : alt > -6 ? (rising ? "새벽 어스름" : "저녁 어스름") : "밤";
   let move = "";
-  if (fi < A.T.length - 1) {
-    const km = A.cum[fi + 1] - A.cum[fi], h = (A.T[fi + 1] - A.T[fi]) / HOUR;
-    move = A.coarse ? "" : km / h >= 1 ? ` · 시속 ${fmt(km / h, km / h < 10 ? 1 : 0)}km` : " · 거의 제자리";
+  // between two fixes: that stretch; past the last fix of a live record: the stretch before it, while it's recent
+  const j = fi < A.T.length - 1 ? fi : A.open && fi > 0 && since < DAY ? fi - 1 : -1;
+  if (j >= 0 && !A.coarse) {
+    const km = A.cum[j + 1] - A.cum[j], h = (A.T[j + 1] - A.T[j]) / HOUR, pre = j < fi ? " · 최근" : " ·";
+    move = km / h >= 1 ? `${pre} 시속 ${fmt(km / h, km / h < 10 ? 1 : 0)}km` : `${pre} 거의 제자리`;
   }
   st.innerHTML = `${esc(place || "")} · 현지 ${Story.clock24(Story.solarMin(t, p.lon))} ${tod}${move}`;
-  sg.innerHTML = `마지막 기록 ${esc(Story.agoKo(since))} · ${esc(QUAL[A.QS[fi]].kind)}${lastSt}`;
+  sg.innerHTML = `마지막 위치 기록 ${esc(Story.agoKo(since))}${lastSt}`;
 }
 
-/* ---------- other animals tracked at the same moment ---------- */
+/* ---------- the nearest other animals tracked at the same moment ---------- */
 let othersCount = -1;
 function updateOthers(force) {
   const A = App.A, L = Story.companions(A, App.t);
@@ -406,58 +382,26 @@ function updateOthers(force) {
   if (force || L.length !== othersCount) { othersCount = L.length; renderOthers(); }
 }
 function renderOthers() {
-  const el = $("#petOthers"), L = App.others || [];
-  if (!L.length) { el.innerHTML = `<h3>같은 시각 추적되던 동물</h3><p class="faint">없음</p>`; return; }
-  const show = App.othersOpen ? L : L.slice(0, 4);
-  el.innerHTML = `<h3>같은 시각 추적되던 동물 <span class="mono">${L.length}</span></h3>
-    <div class="olist">${show.map(o => `<button class="orow" type="button" data-id="${o.B.id}"><i style="background:${CLS[o.B.S.cls].color}"></i>
+  const el = $("#petOthers"), L = (App.others || []).slice(0, 3);
+  el.hidden = !L.length;
+  if (!L.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<h3>${App.A.open ? "지금 가장 가까운 동물" : "그때 가장 가까웠던 동물"}</h3>
+    <div class="olist">${L.map(o => `<button class="orow" type="button" data-id="${o.B.id}">${photoHTML(o.B.S, "s")}
       <span class="on">${esc(shortName(o.B))} <span class="mono faint">#${esc(tagShort(o.B))}</span><small>${esc(placeName(o.pl) || "")}${o.same ? " · 같은 연구" : ""}</small></span>
-      <span class="mono">${kmFmt(o.km)}km</span></button>`).join("")}</div>
-    ${L.length > 4 ? `<button class="linkbtn" type="button" id="oMore">${App.othersOpen ? "접기" : `${L.length - 4}마리 더 보기`}</button>` : ""}`;
+      <span class="mono">${kmFmt(o.km)}km</span></button>`).join("")}</div>`;
   $$(".orow", el).forEach(b => {
     b.onclick = () => { const o = App.others.find(x => x.B.id === b.dataset.id); if (!o) return; Globe.setFollow(false); $("#cFollow").setAttribute("aria-pressed", "false"); Globe.flyTo(o.lon, o.lat, Math.max(Globe.camDistance(), 2.2), 1200); };
     b.onpointerenter = () => { App.otherHover = b.dataset.id; updateOthers(); };
     b.onpointerleave = () => { App.otherHover = null; updateOthers(); };
   });
-  const more = $("#oMore"); if (more) more.onclick = () => { App.othersOpen = !App.othersOpen; renderOthers(); };
 }
 
-/* ---------- scope animation ---------- */
-let scopeT = 0;
-function drawScope(dt, t) {
-  if (App.mode !== "pet" || !App.A || $("#pet").hidden) return;
-  scopeT += dt; if (scopeT < 1 / 30) return; scopeT = 0;
-  const A = App.A, S = A.S, p = App.pos || posAt(A, App.t), tt = App.t;
-  const i = nearestIdx(A, tt), pk = placeKind(runAt(A.pl, i)), rk = regionKind(runAt(A.rg, i));
-  const alt = sunAlt(p.lon, p.lat, tt), sp = App.ended ? 0 : speedAt(A, tt);
-  const month = new Date(tt).getMonth() + 1, north = p.lat > 0;
-  const winter = north ? (month >= 11 || month <= 4) : (month >= 5 && month <= 9);
-  const polarIce = Math.abs(p.lat) > 55 && winter;
-  const terrain = rk === "desert" ? "desert" : rk === "range" || rk === "plateau" ? "mountain" : rk === "wetland" || rk === "delta" ? "wetland" : rk === "tundra" ? "tundra" : (Math.abs(p.lat) > 50 ? "forest" : "grass");
-  const sea = pk === "sea" || pk === "lake";
-  let mode, under = false, env = sea ? pk : "land", floor = false;
-  if (S.move === "fly") mode = sp > 6 || sea ? (sp > 2 || S.look === "tern" || S.look === "frigate" || S.look === "albatross" ? "fly" : "float") : "stand";
-  else if (S.move === "walk") mode = sp > .25 ? "walk" : "stand";
-  else {
-    const deep = S.look === "whale" || S.look === "marlin" || S.look === "turtle";
-    if (deep) { mode = "swim"; under = true; floor = S.look === "turtle"; env = "sea"; }
-    else if (!sea) { mode = "float"; env = "sea"; }
-    else if (sp > 1.2) { mode = "swim"; under = true; floor = S.look === "bearded"; }
-    else mode = "float";
-  }
-  const heading = (() => { const a = posAt(A, tt - 3 * HOUR), b = posAt(A, tt + 3 * HOUR); const dl = ((b.lon - a.lon + 540) % 360) - 180; return Math.abs(dl) < .01 ? 1 : dl > 0 ? 1 : -1; })();
-  Critter.scene($("#scopeCv"), {
-    look: S.look, t, alt, moon: moonPhase(tt), env, terrain, snow: S.look === "caribou" && winter, ice: polarIce && (S.look === "ringed" || S.look === "bearded"),
-    mode, under, floor, heading, sleep: false, big: { whale: .8, marlin: .72, turtle: .66, caribou: .62, albatross: .5, frigate: .56, pelican: .6 }[S.look] || .64,
-  });
-}
-
-/* ============================================================ journal tabs ============================================================ */
+/* ============================================================ record tabs ============================================================ */
 function setTab(tab) { App.tab = tab; $$(".tab").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === tab)); renderTab(); }
 function renderTab(keep) {
   if (App.mode !== "pet") return;
   const el = $("#tabBody"), top = el.scrollTop;
-  ({ day: tabDay, trip: tabTrip, signal: tabSignal, passport: tabPassport, badges: tabBadges, info: tabInfo })[App.tab]();
+  ({ day: tabDay, trip: tabTrip, info: tabInfo })[App.tab]();
   el.scrollTop = keep ? top : 0;
 }
 function viewDay(k, fly = true) {
@@ -473,140 +417,116 @@ function viewDay(k, fly = true) {
 }
 function followNow() { const p = App.pos; Globe.setFollow(true); $("#cFollow").setAttribute("aria-pressed", "true"); if (p) Globe.flyTo(p.lon, p.lat, Math.min(Globe.camDistance(), 2.6), 1000); }
 
-// 24 hours of the viewer's clock: daylight where the animal was, the fixes, status messages
-function stripSVG(S) {
-  const W = 320, y0 = 12, bh = 20, H = 50;
-  const col = { day: "rgba(255,206,140,.66)", twi: "rgba(160,150,225,.42)", night: "rgba(6,10,24,.0)" };
-  let g = `<defs><clipPath id="stripClip"><rect x="0" y="${y0}" width="${W}" height="${bh}" rx="6"/></clipPath>
-    <pattern id="stripHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="rgba(5,8,16,.9)"/><path d="M0 0v6" stroke="rgba(176,196,240,.16)" stroke-width="2"/></pattern></defs>
-    <rect x="0" y="${y0}" width="${W}" height="${bh}" rx="6" fill="rgba(14,22,48,.95)"/><g clip-path="url(#stripClip)">`;
-  for (const [a, b, kind] of S.bands) if (kind !== "night") g += `<rect x="${(a * W).toFixed(1)}" y="${y0}" width="${((b - a) * W).toFixed(1)}" height="${bh}" fill="${col[kind]}"/>`;
-  if (S.before > 0) g += `<rect x="0" y="${y0}" width="${(S.before * W).toFixed(1)}" height="${bh}" fill="url(#stripHatch)"/>`;
-  if (S.after < 1) g += `<rect x="${(S.after * W).toFixed(1)}" y="${y0}" width="${((1 - S.after) * W).toFixed(1)}" height="${bh}" fill="url(#stripHatch)"/>`;
-  if (S.now != null) g += `<line x1="${(S.now * W).toFixed(1)}" x2="${(S.now * W).toFixed(1)}" y1="${y0}" y2="${y0 + bh}" stroke="#ffd2a1" stroke-width="1" stroke-dasharray="2 2" opacity=".8"/>`;
-  g += "</g>";
-  for (const [x, q] of S.fixes) g += `<line x1="${(x * W).toFixed(1)}" x2="${(x * W).toFixed(1)}" y1="${y0 - 3}" y2="${y0 + bh + 3}" stroke="${qcol(q)}" stroke-width="1.6" stroke-linecap="round"/>`;
-  for (const [x, c] of S.st) g += `<path d="M${(x * W).toFixed(1)} ${y0 - 10}l3.5 3.5-3.5 3.5-3.5-3.5z" fill="${c === "a" ? "#93d99a" : c === "d" ? "#ff8f9e" : "#b2bccd"}"/>`;
-  if (S.now != null) g += `<path d="M${(S.now * W).toFixed(1)} ${y0 + bh + 1}l4 6h-8z" fill="#ffd2a1"/>`;
-  for (const h of [0, 6, 12, 18, 24]) g += `<text x="${Math.min(W - 6, Math.max(6, h / 24 * W))}" y="${H - 1}" text-anchor="middle" font-size="8.5" font-family="IBM Plex Mono, monospace" fill="#7c889e">${h}</text>`;
-  return `<figure class="strip"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="하루 24시간 동안 그곳의 낮과 밤, 위치 기록 ${S.fixes.length}번">${g}</svg>
-    <figcaption><span>내 시간 기준</span><span><i class="k k-day"></i>그곳의 낮</span><span><i class="k k-fix"></i>위치 기록</span>${S.st.length ? `<span><i class="k-st">◆</i>상태 신호</span>` : ""}${S.before > 0 || S.after < 1 ? `<span><i class="k k-out"></i>기록 밖</span>` : ""}</figcaption></figure>`;
-}
-function fixChips(A, fx) {
-  if (!fx.length) return "";
-  const show = fx.slice(0, 24);
-  return `<div class="fxs">${show.map(i => `<span class="fx" style="--q:${qcol(A.QS[i])}" title="${esc(timeKo(A.T[i]) + " · " + QUAL[A.QS[i]].kind + " " + QUAL[A.QS[i]].txt + (A.NF[i] > 1 ? ` · 기록 ${A.NF[i]}개를 묶음` : ""))}">${hhmm(A.T[i])}</span>`).join("")}${fx.length > 24 ? `<span class="fx more">+${fx.length - 24}</span>` : ""}</div>`;
-}
+// one day: what the tag sent and where the animal was (the timeline below picks the day)
 function tabDay() {
   const pet = App.pet, A = App.A, k = App.dayView ?? App.lastK, m = Story.meetDay(pet, A);
-  const C = Story.card(pet, A, k, k === App.lastK && !App.ended ? App.t : Infinity), x = C.x, d = x.d;
-  const pre = k < m, today = k === App.lastK && !App.ended;
-  const st = x.newPl.filter(c => !(k === 0 && c === runAt(A.pl, 0)));
-  const sec = (title, rows, extra = "") => rows && rows.length ? `<section class="osec"><h4>${title}</h4>${rowsHTML(rows)}${extra}</section>` : "";
-  const editing = App.editing === k, mine = pet.memos[k];
+  const C = Story.card(pet, A, k, k === App.lastK && !App.ended ? App.t : Infinity), d = C.x.d;
+  const today = k === App.lastK && !App.ended;
+  const sec = (title, rows) => rows && rows.length ? `<section class="osec"><h4>${title}</h4>${rowsHTML(rows)}</section>` : "";
   $("#tabBody").innerHTML = `
-    <div class="daynav"><button class="iconbtn" type="button" id="dPrev" aria-label="전날 일지" ${k <= 0 ? "disabled" : ""}>${ARROW_L}</button>
-      <div class="when"><b>${dateKoW(d.s)}${today ? " · 오늘" : ""}</b>${new Date(d.s).getFullYear()}년 · 기록 ${k + 1}일째${k === m ? " · 입양일" : ""}</div>
-      <button class="iconbtn" type="button" id="dNext" aria-label="다음 날 일지" ${k >= App.lastK ? "disabled" : ""}>${ARROW_R}</button></div>
-    <article class="obs${pre ? " pre" : ""}">
-      <header class="obs-h"><span>관측 일지</span><span class="mono">${esc(shortName(A))} #${esc(tagShort(A))} · ${pre ? "입양 전" : "D+" + (k - m)}</span></header>
-      ${st.length ? `<div class="stamp-mini" aria-hidden="true">${Story.stampSVG(st[0], d.s, hashStr(A.id + st[0]) % 100000, false)}</div>` : ""}
-      ${stripSVG(C.strip)}
-      ${C.hl.length ? `<ul class="hl">${C.hl.map(([ic, t]) => `<li class="hl-${ic}">${ICO(HL_ICON[ic])}<span>${esc(t)}</span></li>`).join("")}</ul>` : ""}
-      ${sec("위치", C.rows.pos)}${sec("이동", C.rows.move)}${sec("신호", C.rows.sig, fixChips(A, x.fx))}${sec("하늘", C.rows.sky)}
-      ${C.tagRows ? sec("태그 부착", C.tagRows) : ""}${C.endRows ? sec("기록 끝", C.endRows) : ""}
-    </article>
-    ${pre ? "" : mine && !editing ? `<div class="mymemo"><div class="mm-h"><span>내 메모</span><button class="linkbtn" type="button" id="mEdit">고치기</button></div><p>${esc(mine)}</p></div>`
-      : `<div class="memo"><label for="mTxt">내 메모</label><textarea id="mTxt" maxlength="200" placeholder="이날의 메모">${esc(App.drafts[k] ?? mine ?? "")}</textarea>
-      <div class="r-row"><span>이 기기에만 저장</span><button class="btn small primary" type="button" id="mSave">저장</button></div></div>`}`;
-  $("#dPrev").onclick = () => viewDay(k - 1);
-  $("#dNext").onclick = () => viewDay(k + 1);
-  const ta = $("#mTxt");
-  if (ta) ta.oninput = () => { App.drafts[k] = ta.value; };
-  const save = $("#mSave");
-  if (save) save.onclick = () => {
-    const v = ta.value.trim(); if (!v) return ta.focus();
-    pet.memos[k] = v.slice(0, 200); delete App.drafts[k]; App.editing = null; Store.save();
-    toast("메모를 저장했어요"); renderPet(true); tabDay();
-  };
-  const ed = $("#mEdit"); if (ed) ed.onclick = () => { App.editing = k; App.drafts[k] = pet.memos[k]; tabDay(); $("#mTxt").focus(); };
+    <div class="dayhead"><div><b>${dateKoW(d.s)}${today ? " · 오늘" : ""}</b><span>${new Date(d.s).getFullYear()}년${k < m ? " · 입양 전" : k === m ? " · 입양한 날" : ""}</span></div>
+      ${k !== App.lastK ? `<button class="btn small" type="button" id="dToday">${App.ended ? "마지막 날로" : "오늘로"}</button>` : ""}</div>
+    ${C.hl.length ? `<ul class="hl">${C.hl.map(([ic, t]) => `<li class="hl-${ic}">${ICO(HL_ICON[ic])}<span>${esc(t)}</span></li>`).join("")}</ul>` : ""}
+    ${sec("위치", C.rows.pos)}${sec("이동", C.rows.move)}${sec("신호", C.rows.sig)}${sec("하늘", C.rows.sky)}
+    ${C.tagRows ? sec("태그 부착", C.tagRows) : ""}${C.endRows ? sec("기록 끝", C.endRows) : ""}`;
+  const b = $("#dToday"); if (b) b.onclick = () => viewDay(App.lastK);
 }
 
 function tabTrip() {
-  const pet = App.pet, A = App.A, D = buildDays(A), m = Story.meetDay(pet, A), t = App.t;
-  const R = Story.records(A, t), ST = Story.stays(A, t);
+  const A = App.A, D = buildDays(A), t = App.t;
+  const R = Story.records(A, t), ST = Story.stays(A, t), PL = Story.entered(A, t);
   const goT = (ms, ll) => { const k = dayIndexAt(A, ms); return `data-k="${k}"${ll ? ` data-ll="${ll[0].toFixed(3)},${ll[1].toFixed(3)}"` : ""}`; };
-  const rec = [];
-  if (R.day) rec.push([`하루 가장 많이 이동`, `${kmFmt(R.day.km)}km`, `${dateKo(D[R.day.k].s)}`, goT(D[R.day.k].s)]);
-  if (R.fast) rec.push(["가장 빠른 구간", `시속 ${fmt(R.fast.v, R.fast.v < 10 ? 1 : 0)}km`, `${dateKo(A.T[R.fast.i], false)} ${timeKo(A.T[R.fast.i])}부터 ${Story.hm((A.T[R.fast.i + 1] - A.T[R.fast.i]) / MIN)}`, goT(A.T[R.fast.i], [A.X[R.fast.i + 1], A.Y[R.fast.i + 1]])]);
   const at = i => `${dateKo(A.T[i], false)} · ${placeName(runAt(A.pl, i)) || ""}`;
+  const rec = [];
+  if (R.day) rec.push(["하루 가장 많이 이동", `${kmFmt(R.day.km)}km`, dateKo(D[R.day.k].s), goT(D[R.day.k].s)]);
+  if (R.fast) rec.push(["가장 빠른 구간", `시속 ${fmt(R.fast.v, R.fast.v < 10 ? 1 : 0)}km`, `${dateKo(A.T[R.fast.i], false)} ${timeKo(A.T[R.fast.i])}부터 ${Story.hm((A.T[R.fast.i + 1] - A.T[R.fast.i]) / MIN)}`, goT(A.T[R.fast.i], [A.X[R.fast.i + 1], A.Y[R.fast.i + 1]])]);
   rec.push(["가장 북쪽", `${A.Y[R.north] >= 0 ? "북위" : "남위"} ${Math.abs(A.Y[R.north]).toFixed(2)}°`, at(R.north), goT(A.T[R.north], [A.X[R.north], A.Y[R.north]])]);
   rec.push(["가장 남쪽", `${A.Y[R.south] >= 0 ? "북위" : "남위"} ${Math.abs(A.Y[R.south]).toFixed(2)}°`, at(R.south), goT(A.T[R.south], [A.X[R.south], A.Y[R.south]])]);
-  rec.push(["출발지에서 가장 먼 곳", `${kmFmt(hav(A.X[0], A.Y[0], A.X[R.far], A.Y[R.far]))}km`, at(R.far), goT(A.T[R.far], [A.X[R.far], A.Y[R.far]])]);
-  if (R.meas > 20 && R.meas > R.tot * .3) rec.push(["해 진 뒤 이동", `${pct(R.night / R.meas)}%`, `${kmFmt(R.meas)}km 중`, ""]);
-  if (R.gap) rec.push(["가장 긴 기록 공백", R.gap.dt >= 2 * DAY ? `${fmt(R.gap.dt / DAY, 1)}일` : Story.hm(R.gap.dt / MIN), `${dateKo(A.T[R.gap.i], false)} ${timeKo(A.T[R.gap.i])}부터`, goT(A.T[R.gap.i])]);
-  const rows = [];
-  for (let k = App.lastK; k >= 0; k--) {
-    const d = Story.digest(A, k), pre = k < m, today = k === App.lastK;
-    const x = today ? Story.day(A, k, t) : null, raw = x ? x.raw : d.raw, km = x ? x.km : d.km, stc = (x ? x.st : d.st).map(s => s.c);
-    const sub = [regionName(d.rg), cityName(d.ci) && cityName(d.ci) + " 근처"].filter(Boolean).join(" · ") || (placeKind(d.pl) === "sea" ? "바다 위" : "");
-    const flag = stc.includes("d") ? ` · <span class="bad">dead 신호</span>` : stc.some(c => c !== "a") ? " · 상태 신호" : "";
-    rows.push(`<button class="dl${pre ? " pre" : ""}" type="button" data-k="${k}"><span class="d">${pre ? "입양 전" : "D+" + (k - m)}<br>${dateShort(d.s)}</span>
-      <span class="p">${esc(placeName(d.pl) || "")}${d.newPl.length && k > 0 ? ` <span class="new">새 도장</span>` : ""}<small>${esc(sub)}${sub ? " · " : ""}${raw ? `기록 ${raw}번` : "기록 없음"}${flag}</small></span><span class="km">${kmFmt(km)}km</span></button>`);
-  }
+  rec.push([`${homeWord(A)}에서 가장 먼 곳`, `${kmFmt(hav(A.X[0], A.Y[0], A.X[R.far], A.Y[R.far]))}km`, at(R.far), goT(A.T[R.far], [A.X[R.far], A.Y[R.far]])]);
   $("#tabBody").innerHTML = `<div class="sec"><h3>지금까지</h3>
-    <div class="stats"><div class="stat"><div class="k">총 이동</div><div class="v">${kmFmt(kmAt(A, t))}<small>km</small></div></div>
-      <div class="stat"><div class="k">기록된 날</div><div class="v">${App.lastK + 1}<small>일</small></div></div>
-      <div class="stat"><div class="k">위치 기록</div><div class="v">${fmt(R.raw)}<small>개</small></div></div>
-      <div class="stat"><div class="k">기록 없는 날</div><div class="v">${fmt(R.empty)}<small>일</small></div></div></div></div>
-    <div class="sec"><h3>기록 모음</h3><div class="recs">${rec.map(([a, b, c, go]) => `<button class="rec" type="button" ${go || "disabled"}><span class="rk">${esc(a)}</span><b>${esc(b)}</b><small>${esc(c)}</small></button>`).join("")}</div></div>
-    <div class="sec"><h3>머문 곳 <span class="mono faint">${ST.length}</span></h3>
-      <p class="faint small">25km 안에서 사흘 넘게 머문 곳</p>
+    <div class="stats three"><div class="stat"><div class="k">총 이동</div><div class="v">${kmFmt(kmAt(A, t))}<small>km</small></div></div>
+      <div class="stat"><div class="k">기록된 날</div><div class="v">${fmt(App.lastK + 1)}<small>일</small></div></div>
+      <div class="stat"><div class="k">지나간 곳</div><div class="v">${PL.length}<small>곳</small></div></div></div>
+    ${trackCut(A) ? `<p class="faint small">지도에는 ${dateKo(A.T[0])}부터 기록이 담겨 있어요. 추적은 ${dateKo(trackSince(A))}에 시작했어요.</p>` : ""}</div>
+    <div class="sec"><h3>기록</h3><div class="recs">${rec.map(([a, b, c, go]) => `<button class="rec" type="button" ${go || "disabled"}><span class="rk">${esc(a)}</span><b>${esc(b)}</b><small>${esc(c)}</small></button>`).join("")}</div></div>
+    <div class="sec"><h3>지나간 곳</h3><p class="faint small">처음 들어간 나라와 바다, 들어간 날</p>
+      <div class="plist">${PL.slice().reverse().map(p => `<button class="prow" type="button" data-k="${p.k}"><span>${esc(placeName(p.c))}</span><span class="d">${dateKo(p.s, new Date(p.s).getFullYear() !== new Date().getFullYear())}</span></button>`).join("")}</div></div>
+    <div class="sec"><h3>머문 곳</h3><p class="faint small">25km 안에서 사흘 넘게 머문 곳</p>
       ${ST.length ? `<div class="stays">${ST.slice().reverse().map(s => `<button class="stay" type="button" ${goT(s.t0, [s.lon, s.lat])}><b>${esc(placeName(s.pl) || "")}${s.open ? ` <span class="now">머무는 중</span>` : ""}</b>
         <small>${esc([regionName(s.rg), cityName(s.ci) && cityName(s.ci) + " 근처"].filter(Boolean).join(" · "))}</small>
-        <span class="mono">${dateShort(s.t0)} ~ ${dateShort(s.t1)} · ${fmt(s.days, s.days < 10 ? 1 : 0)}일 · 기록 ${s.nfix}개</span></button>`).join("")}</div>` : `<p class="muted small">없음</p>`}</div>
-    ${A.se ? seasonHTML(Story.signal(A, t).seasons) : ""}
-    <div class="sec"><h3>날마다</h3><div class="dlist">${rows.join("")}</div></div>`;
-  const tb = $("#tabBody");
-  $$("[data-k]", tb).forEach(b => b.onclick = () => {
+        <span class="mono">${spanShort(s.t0, s.t1)} · ${fmt(s.days, s.days < 10 ? 1 : 0)}일</span></button>`).join("")}</div>` : `<p class="muted small">없음</p>`}</div>
+    ${A.se ? seasonHTML(Story.signal(A, t).seasons) : ""}`;
+  $$("[data-k]", $("#tabBody")).forEach(b => b.onclick = () => {
     const k = +b.dataset.k, ll = b.dataset.ll;
     if (ll) { const [lo, la] = ll.split(",").map(Number); viewDay(k, false); Globe.setFollow(false); $("#cFollow").setAttribute("aria-pressed", "false"); Globe.flyTo(lo, la, Math.min(Globe.camDistance(), 2.4), 1200); }
     else viewDay(k);
   });
 }
+// 7.7 ~ 10.15, or 2025.10.16 ~ 2026.10.15 across a new year
+const spanShort = (a, b) => { const ya = new Date(a).getFullYear(), yb = new Date(b).getFullYear(); return ya === yb ? `${dateShort(a)} ~ ${dateShort(b)}` : `${ya}.${dateShort(a)} ~ ${yb}.${dateShort(b)}`; };
 function seasonHTML(S) {
   if (!S || !S.runs.length) return "";
   return `<div class="sec"><h3>연구자 표시 계절</h3>
     <div class="seasons">${S.runs.map(r => `<span class="sr ${r.c}" style="flex:${Math.max(1, (r.t1 - r.t0) / DAY)}" title="${esc(SEASON_KO[r.c])} ${esc(dateKo(r.t0))} ~ ${esc(dateKo(r.t1))}"></span>`).join("")}</div>
-    <p class="muted small">${S.runs.map(r => `${SEASON_KO[r.c]} ${dateShort(r.t0)}~${dateShort(r.t1)}`).join(" · ")}</p>
+    <p class="muted small">${S.runs.map(r => `${SEASON_KO[r.c]} ${spanShort(r.t0, r.t1)}`).join(" · ")}</p>
     ${S.km != null ? `<p class="small">여름·겨울 위치의 중심 사이 <b>${kmFmt(S.km)}km</b></p>` : ""}</div>`;
 }
 
-function tabSignal() {
-  const A = App.A, t = App.t, G = Story.signal(A, t), D = buildDays(A), K = App.lastK, m = Story.meetDay(App.pet, A);
-  const raw = G.perDay.reduce((s, v) => s + v, 0), withFix = G.perDay.filter(v => v > 0).length, maxN = Math.max(1, ...G.perDay);
-  const W = 320, H = 64, bw = W / G.perDay.length;
-  let bars = "";
-  G.perDay.forEach((v, k) => {
-    const h = v ? 4 + (H - 18) * Math.sqrt(v / maxN) : 0, x = k * bw;
-    bars += v ? `<rect x="${x.toFixed(2)}" y="${(H - 12 - h).toFixed(1)}" width="${Math.max(.6, bw - (bw > 3 ? 1 : 0)).toFixed(2)}" height="${h.toFixed(1)}" rx="${bw > 4 ? 1.5 : 0}" fill="${k < m ? "rgba(245,166,91,.4)" : "#f5a65b"}" data-k="${k}"><title>${dateKo(D[k].s)} · 기록 ${v}번</title></rect>`
-      : `<rect x="${x.toFixed(2)}" y="${H - 14}" width="${Math.max(.6, bw - (bw > 3 ? 1 : 0)).toFixed(2)}" height="2" fill="rgba(255,143,158,.55)" data-k="${k}"><title>${dateKo(D[k].s)} · 기록 없음</title></rect>`;
+function tabInfo() {
+  const pet = App.pet, A = App.A, S = A.S, K = App.lastK, t = App.ended ? A.t1 : App.t;
+  const G = Story.signal(A, t), raw = G.perDay.reduce((s, v) => s + v, 0), empty = G.perDay.slice(0, K).filter(v => !v).length;
+  const gap = G.gap ? (G.gap.dt >= 2 * DAY ? fmt(G.gap.dt / DAY, 1) + "일" : Story.hm(G.gap.dt / MIN)) : "";
+  const fetched = DB.live ? Story.agoKo(Date.now() - Date.parse(DB.live.generated)) : null;
+  $("#tabBody").innerHTML = `
+    <div class="sec"><h3>이름</h3><div class="field row"><input id="iName" maxlength="12" value="${esc(pet.name)}" aria-label="이름"><button class="btn small" type="button" id="iSave">바꾸기</button></div></div>
+    <div class="sec"><h3>이 동물</h3><dl class="kv">
+      <dt>종</dt><dd>${esc(S.ko)} <i class="faint">${esc(S.sci)}</i></dd>
+      <dt>태그</dt><dd>#${esc(A.tag)}</dd>
+      ${nameOf(A) ? `<dt>별명</dt><dd>${esc(nameOf(A))} <span class="faint">연구자가 붙인 이름</span></dd>` : ""}
+      <dt>성별·나이</dt><dd>${esc(sexAgeKo(A))}</dd>
+      <dt>추적</dt><dd>${dateKo(trackSince(A))}부터${App.ended ? ` ${dateKo(A.t1)}까지` : ""}</dd>
+      <dt>보전 상태</dt><dd>${esc(iucnKo(S.iucn))}</dd></dl></div>
+    <div class="sec"><h3>태그 신호</h3><dl class="kv">
+      <dt>재는 방법</dt><dd>${esc(A.loc)}<br><span class="faint">${esc(Story.METHOD[A.method])}</span></dd>
+      <dt>받은 위치</dt><dd>${fmt(raw)}개${raw > G.n ? ` <span class="faint">지도에는 ${fmt(G.n)}개 지점</span>` : ""}</dd>
+      ${K > 0 ? `<dt>위치 없는 날</dt><dd>${fmt(empty)}일 <span class="faint">${fmt(K)}일 중</span></dd>` : ""}
+      ${gap ? `<dt>가장 긴 공백</dt><dd>${esc(gap)}</dd>` : ""}
+      ${G.er ? `<dt>오차 반경</dt><dd>중간값 ${esc(Story.erFmt(G.er.med))}</dd>` : ""}</dl>
+      ${G.mix.length > 1 ? mixHTML(G.mix) : ""}</div>
+    ${A.status.length ? batteryHTML(A, G.st, t) : ""}
+    <div class="sec"><h3>출처</h3>${srcHTML(A.src_, S)}</div>
+    <div class="sec"><h3>시간</h3>${pet.mode === "live"
+      ? `<p class="muted small">새 위치는 6시간마다 받아 와요. 태그가 위치를 모아서 보내기 때문에 몇 시간 늦게 보일 수 있어요.${fetched ? ` 마지막으로 받아 온 때는 ${esc(josa(fetched, "이에요/예요"))}.` : ""}</p>`
+      : pet.mode === "sync" ? `<p class="muted small">몇 년 전 실제 기록을 ${pet.k}년 전 오늘에 맞춰 실제 시간으로 따라가요.</p>`
+      : `<p class="muted small">몇 년 전 실제 기록을 첫 기록부터 따라가요.</p><div class="chips" id="iPace">${PACES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pet.pace === v}">${l}</button>`).join("")}</div>`}
+      <p class="faint small">지구본의 구름은 그날 날씨가 아니라 위성 사진 한 장이에요.</p></div>
+    <details class="sec fold"><summary>다른 기기로 옮기기</summary>
+      <p class="muted small">입양 기록은 이 브라우저에만 저장돼요. 아래 코드를 다른 기기에 붙여 넣으면 옮겨져요.</p>
+      <div class="field row"><input id="iCode" readonly value="${esc(Store.exportCode())}" class="code" aria-label="백업 코드"><button class="btn small" type="button" id="iCopy">복사</button></div>
+      <div class="field row"><input id="iPaste" placeholder="코드 붙여 넣기" aria-label="옮겨 올 코드"><button class="btn small" type="button" id="iLoad">불러오기</button></div>
+      <div id="iMsg" class="small faint"></div></details>
+    <div class="sec"><h3>입양 취소</h3><div id="byeBox"><button class="btn small" type="button" id="iBye">입양 취소</button></div></div>`;
+  $("#iSave").onclick = () => { const v = $("#iName").value.trim().slice(0, 12); if (!v) return; pet.name = v; Store.save(); renderPet(true); renderSwitch(); renderModeBtn(); toast(`이름을 ${esc(josa(v, "으로/로"))} 바꿨어요`); };
+  $$("#iPace .chip").forEach(c => c.onclick = () => {
+    const now = Date.now(), t2 = Story.petClock(pet, A, now);
+    pet.anchorReal = now; pet.anchorTrack = t2; pet.pace = +c.dataset.v; Store.save(); tabInfo();
   });
-  const lab = k => `<text x="${clamp(k * bw + bw / 2, 14, W - 14).toFixed(1)}" y="${H - 1}" text-anchor="middle" font-size="8.5" font-family="IBM Plex Mono, monospace" fill="#7c889e">${dateShort(D[k].s)}</text>`;
-  const perDay = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="날마다 받은 위치 기록 수">${bars}${lab(0)}${K > 0 ? lab(K) : ""}</svg>`;
-  let html = `<div class="sec"><h3>태그가 보낸 것</h3>
-    <div class="stats"><div class="stat"><div class="k">받은 위치 기록</div><div class="v">${fmt(raw)}<small>개</small></div></div>
-      <div class="stat"><div class="k">기록 있는 날</div><div class="v">${withFix}<small>/ ${K + 1}일</small></div></div>
-      <div class="stat"><div class="k">마지막 기록</div><div class="v sm">${esc(App.ended ? dateKo(A.t1, false) : Story.agoKo(G.since))}</div></div>
-      <div class="stat"><div class="k">가장 긴 공백</div><div class="v sm">${G.gap ? (G.gap.dt >= 2 * DAY ? fmt(G.gap.dt / DAY, 1) + "일" : esc(Story.hm(G.gap.dt / MIN))) : "-"}</div></div></div></div>
-    <div class="sec"><h3>날마다 받은 위치 기록</h3>${perDay}<p class="faint small">흐린 막대는 입양 전, 붉은 줄은 기록 없는 날</p></div>
-    <div class="sec"><h3>위치를 재는 방법</h3><p class="small"><b>${esc(A.loc)}</b><br><span class="muted">${esc(Story.METHOD[A.method])}</span></p>
-      <div class="sub-h">정확도</div>${mixHTML(G.mix)}
-      ${G.er ? rowsHTML([["오차 반경", `중간값 ${Story.erFmt(G.er.med)}`, `${Story.erFmt(G.er.min)} ~ ${Story.erFmt(G.er.max)}${A.coarse ? " · 지구본의 원이 지금 위치의 오차 범위" : ""}`]]) : ""}</div>`;
-  if (A.status.length) html += batteryHTML(A, G.st, t);
-  $("#tabBody").innerHTML = html;
-  $$(".chart [data-k]").forEach(r => r.addEventListener("click", () => viewDay(+r.getAttribute("data-k"))));
+  $("#iCopy").onclick = () => {
+    const inp = $("#iCode"), done = () => { $("#iMsg").textContent = "복사했어요."; }, manual = () => { inp.select(); $("#iMsg").textContent = "코드를 선택해 두었어요. 직접 복사해 주세요."; };
+    try { navigator.clipboard.writeText(inp.value).then(done, manual); } catch (e) { manual(); }
+  };
+  $("#iLoad").onclick = () => {
+    if (!Store.importCode($("#iPaste").value)) { $("#iMsg").textContent = "코드를 읽지 못했어요."; return; }
+    // the imported pets may need records this page hasn't read yet
+    $("#iMsg").textContent = "불러왔어요. 다시 여는 중…"; location.reload();
+  };
+  $("#iBye").onclick = () => {
+    $("#byeBox").innerHTML = `<div class="confirm">${esc(josa(pet.name, "을/를"))} 이 기기에서 지울까요?<div class="actions"><button class="btn small" type="button" id="byeNo">그대로 두기</button><button class="btn small danger" type="button" id="byeYes">입양 취소</button></div></div>`;
+    $("#byeNo").onclick = tabInfo;
+    $("#byeYes").onclick = () => { const st = Store.state; st.pets = st.pets.filter(p => p.id !== pet.id); st.active = st.pets[0] ? st.pets[0].id : null; Store.save(); App.pet = null; st.pets.length ? enterPet() : enterBrowse(); };
+  };
 }
+// the tag's battery and status messages (only some past records have them)
 function batteryHTML(A, st, t) {
   if (!st.length) return `<div class="sec"><h3>태그 배터리와 상태 신호</h3><p class="muted small">아직 없음</p></div>`;
   const W = 320, H = 96, t0 = Math.min(A.T[0], st[0].t), t1 = Math.max(t, st[st.length - 1].t), vs = st.map(s => s.v);
@@ -627,63 +547,7 @@ function batteryHTML(A, st, t) {
     ${cnt.d ? `<p class="faint small">dead는 태그가 한동안 움직임을 못 느낄 때 보내는 신호예요. 실제 사망과 다를 수 있어요.</p>` : ""}</div>`;
 }
 
-function tabPassport() {
-  const pet = App.pet, A = App.A, m = Story.meetDay(pet, A);
-  const st = Story.stamps(A, App.t);
-  const mine = st.filter(s => s.s > pet.anchorTrack).length;
-  $("#tabBody").innerHTML = `<div class="sec"><h3>여권 · 도장 ${st.length}개</h3>
-    <p class="faint small">처음 들어간 나라와 바다 · 입양 후 ${mine}개 · 흐린 도장은 입양 전</p></div>
-    <div class="passport">${st.map((s, i) => `<button class="stamp${s.k < m ? " pre" : ""}" type="button" data-k="${s.k}" title="${esc(placeName(s.c))} · ${esc(dateKo(s.s))} ${esc(timeKo(s.s))}">${Story.stampSVG(s.c, s.s, hashStr(A.id + s.c) % 100000, i === 0)}</button>`).join("")}</div>`;
-  $$(".stamp[data-k]").forEach(b => b.onclick = () => viewDay(+b.dataset.k));
-}
-function tabBadges() {
-  const pet = App.pet, A = App.A, B = Story.badges(pet, A, App.t, App.ended);
-  $("#tabBody").innerHTML = `<div class="sec"><h3>배지 ${B.filter(b => b.got).length} / ${B.length}</h3></div>
-    <div class="badges">${B.map(b => `<div class="badge${b.got ? "" : " locked"}" style="color:${b.got ? "var(--monarch-2)" : "var(--ink-3)"}">${b.svg}<div><b style="color:var(--ink)">${esc(b.name)}</b><span class="muted">${esc(b.desc)}</span></div></div>`).join("")}</div>`;
-}
-function tabInfo() {
-  const pet = App.pet, A = App.A, S = A.S, src = A.src_;
-  $("#tabBody").innerHTML = `
-    <div class="sec"><h3>이름</h3><div class="field" style="flex-direction:row;gap:8px"><input id="iName" maxlength="12" value="${esc(pet.name)}" style="flex:1;min-width:0" aria-label="이름"><button class="btn small" type="button" id="iSave">바꾸기</button></div></div>
-    <div class="sec"><h3>시간</h3>${pet.mode === "sync" ? `<p class="muted small">${pet.k}년 전 오늘에 맞춰 실제 시간으로 흘러요.</p>`
-      : `<p class="muted small">첫 기록부터 시작</p><div class="sub-h">속도</div><div class="chips" id="iPace">${PACES.map(([v, l]) => `<button class="chip" type="button" data-v="${v}" aria-pressed="${pet.pace === v}">${l}</button>`).join("")}</div>`}</div>
-    <div class="sec"><h3>입양 증서</h3><button class="btn small" type="button" id="iCert">증서 다시 보기</button></div>
-    <div class="sec"><h3>이 동물의 기록</h3><dl class="kv">
-      <dt>종</dt><dd>${esc(S.ko)} <i class="faint">${esc(S.sci)}</i></dd><dt>태그</dt><dd>#${esc(A.tag)}</dd>
-      <dt>출발지</dt><dd>${esc(A.home)}</dd><dt>기록 기간</dt><dd>${dateKo(A.T[0])} ~ ${App.ended ? dateKo(A.t1) : "진행 중"}</dd>
-      <dt>나이·성별</dt><dd>${esc([A.ageText, A.sex === "f" ? "암컷" : A.sex === "m" ? "수컷" : ""].filter(Boolean).join(" · ") || "기록 없음")}</dd></dl>
-      ${rowsHTML(Story.contents(A, App.ended ? Infinity : App.t).filter(r => r[0] !== "위치 기록"))}
-      <div class="src">자료: ${esc(src.who || "")} · <a href="${esc(src.url || "#")}" target="_blank" rel="noopener">${esc(src.title || "")}</a> (${esc(src.via || "")})</div></div>
-    <div class="sec"><h3>참고</h3><p class="muted small">위치는 실시간이 아니라 몇 년 전 실제 기록이에요. 지구본의 구름은 그날 날씨가 아니라 위성 사진 한 장이에요.</p></div>
-    <div class="sec"><h3>백업</h3><p class="muted small">입양 기록은 이 브라우저에만 저장돼요. 코드를 다른 기기에 붙여 넣으면 옮겨져요.</p>
-      <div class="field" style="flex-direction:row;gap:8px"><input id="iCode" readonly value="${esc(Store.exportCode())}" style="flex:1;min-width:0;font-family:var(--f-mono);font-size:11px" aria-label="백업 코드"><button class="btn small" type="button" id="iCopy">복사</button></div>
-      <div class="field" style="flex-direction:row;gap:8px"><input id="iPaste" placeholder="백업 코드 붙여 넣기" style="flex:1;min-width:0;font-size:12px" aria-label="옮겨 올 코드"><button class="btn small" type="button" id="iLoad">불러오기</button></div>
-      <div id="iMsg" class="small faint"></div></div>
-    <div class="sec"><h3>입양 취소</h3><div id="byeBox"><button class="btn small" type="button" id="iBye">입양 취소</button></div></div>`;
-  $("#iSave").onclick = () => { const v = $("#iName").value.trim().slice(0, 12); if (!v) return; pet.name = v; Store.save(); renderPet(true); renderSwitch(); renderModeBtn(); toast(`이름을 ${esc(josa(v, "으로/로"))} 바꿨어요`); };
-  $$("#iPace .chip").forEach(c => c.onclick = () => {
-    const now = Date.now(), t = Story.petClock(pet, A, now);
-    pet.anchorReal = now; pet.anchorTrack = t; pet.pace = +c.dataset.v; Store.save(); tabInfo();
-  });
-  $("#iCert").onclick = () => showCert(pet, false);
-  $("#iCopy").onclick = () => {
-    const inp = $("#iCode"), done = () => { $("#iMsg").textContent = "복사했어요."; };
-    try { navigator.clipboard.writeText(inp.value).then(done, () => { inp.select(); $("#iMsg").textContent = "코드를 선택해 두었어요. 직접 복사해 주세요."; }); }
-    catch (e) { inp.select(); $("#iMsg").textContent = "코드를 선택해 두었어요. 직접 복사해 주세요."; }
-  };
-  $("#iLoad").onclick = () => {
-    if (!Store.importCode($("#iPaste").value)) { $("#iMsg").textContent = "코드를 읽지 못했어요."; return; }
-    Store.state.pets = Store.state.pets.filter(p => DB.byId.has(p.aid)); Store.save();
-    toast("입양 기록을 불러왔어요"); activePet() ? enterPet() : enterBrowse();
-  };
-  $("#iBye").onclick = () => {
-    $("#byeBox").innerHTML = `<div class="confirm">입양을 취소하면 메모와 배지가 모두 지워져요.<div style="display:flex;gap:8px"><button class="btn small" type="button" id="byeNo">그대로 두기</button><button class="btn small" type="button" id="byeYes" style="border-color:rgba(255,143,158,.5);color:var(--heart)">입양 취소</button></div></div>`;
-    $("#byeNo").onclick = tabInfo;
-    $("#byeYes").onclick = () => { const st = Store.state; st.pets = st.pets.filter(p => p.id !== pet.id); st.active = st.pets[0] ? st.pets[0].id : null; Store.save(); App.pet = null; st.pets.length ? enterPet() : enterBrowse(); };
-  };
-}
-
-/* ---------- timeline ---------- */
+/* ---------- timeline: one pill a day, its bar the distance moved ---------- */
 function renderTimeline() {
   const pet = App.pet, A = App.A; if (!pet) return;
   const D = buildDays(A), m = Story.meetDay(pet, A), K = App.lastK, sel = App.dayView ?? K;
@@ -693,14 +557,14 @@ function renderTimeline() {
   const html = [];
   for (let k = 0; k <= K; k++) {
     const d = D[k], km = kmOf(k), raw = rawOf(k), sc = stOf(k), h = 4 + 20 * Math.sqrt(km / maxKm), cls = ["dpill"];
-    if (k < m) cls.push("pre"); if (k === K) cls.push("today"); if (d.newPl.length && k > 0) cls.push("stamp-day");
+    if (k < m) cls.push("pre"); if (k === K) cls.push("today"); if (d.newPl.length && k > 0) cls.push("new-place");
     if (!raw) cls.push("nofix"); if (sc.includes("d")) cls.push("st-d"); else if (sc.some(c => c !== "a")) cls.push("st-u");
-    html.push(`<button class="${cls.join(" ")}" type="button" data-k="${k}" ${k === sel ? 'aria-current="true"' : ""} title="${dateKo(d.s)} · ${esc(placeName(d.pl) || "")} · ${kmFmt(km)}km · ${raw ? `기록 ${raw}번` : "기록 없음"}${sc.length ? " · 상태 " + sc.map(c => MORT[c]).join(",") : ""}"><i style="height:${h.toFixed(1)}px"></i>${new Date(d.s).getDate()}</button>`);
+    html.push(`<button class="${cls.join(" ")}" type="button" data-k="${k}" ${k === sel ? 'aria-current="true"' : ""} title="${k < m ? "입양 전 · " : ""}${dateKo(d.s)} · ${esc(placeName(d.pl) || "")} · ${kmFmt(km)}km · ${raw ? `기록 ${raw}번` : "기록 없음"}${sc.length ? " · 상태 " + sc.map(c => MORT[c]).join(",") : ""}"><i style="height:${h.toFixed(1)}px"></i>${new Date(d.s).getDate()}</button>`);
   }
   if (!App.ended) html.push(`<span class="dpill" aria-hidden="true" style="opacity:.5">?</span>`);
   const el = $("#tlDays"); el.innerHTML = html.join("");
   const d = D[sel];
-  $("#tlLabel").innerHTML = `<b>${sel < m ? "입양 전" : "D+" + (sel - m)} · ${dateKo(d.s, false)}</b>${new Date(d.s).getFullYear()}년 · ${esc(placeName(d.pl) || "")}`;
+  $("#tlLabel").innerHTML = `<b>${dateKo(d.s, false)}${sel === K && !App.ended ? " · 오늘" : ""}</b>${new Date(d.s).getFullYear()}년 · ${esc(placeName(d.pl) || "")}`;
   $("#tlPrev").disabled = sel <= 0; $("#tlNext").disabled = sel >= K;
   // centre the chosen day (after the label above has taken its width)
   const centre = () => { const c = $(`.dpill[data-k="${sel}"]`, el); if (c && el.clientWidth) el.scrollLeft += c.getBoundingClientRect().left - el.getBoundingClientRect().left - (el.clientWidth - c.offsetWidth) / 2; };
@@ -727,7 +591,7 @@ function updateLabels() {
   if (App.mode === "pet" && App.pet && App.pos) {
     const el = label("pet", `<div class="bubble"><span class="dot"></span><b>${esc(App.pet.name)}</b></div><div class="stem"></div>`);
     const pp = placeLabel(el, [App.pos.lon, App.pos.lat]);
-    const hl = label("home", `<div class="bubble" style="font-size:11px;padding:2px 8px;opacity:.8">출발</div><div class="stem" style="height:12px"></div>`, "mini");
+    const hl = label("home", `<div class="bubble" style="font-size:11px;padding:2px 8px;opacity:.8">${trackCut(App.A) ? "첫 위치" : "출발"}</div><div class="stem" style="height:12px"></div>`, "mini");
     const hp = placeLabel(hl, [App.A.X[0], App.A.Y[0]]);
     if (pp && hp && Math.hypot(pp.x - hp.x, pp.y - hp.y) < 48) hl.style.opacity = 0;
     const o = App.otherHover && App.others.find(x => x.B.id === App.otherHover);
@@ -738,18 +602,86 @@ function updateLabels() {
     hideLabel("pet"); hideLabel("home"); hideLabel("other");
     const id = App.hover || App.sel, A = id && DB.byId.get(id);
     if (A) {
-      const el = label("cand", `<div class="bubble"><span class="dot" style="background:${CLS[A.S.cls].color};box-shadow:0 0 10px ${CLS[A.S.cls].color}"></span><b>${esc(shortName(A))}</b> ${A.sync ? `<span class="faint">${A.sync.k}년 전 오늘</span>` : ""}</div><div class="stem"></div>`, "mini");
+      const when = A.open ? `${Story.agoKo(Date.now() - A.t1)} 신호` : A.sync ? `${A.sync.k}년 전 오늘` : "";
+      const el = label("cand", `<div class="bubble"><span class="dot" style="background:${CLS[A.S.cls].color};box-shadow:0 0 10px ${CLS[A.S.cls].color}"></span><b>${esc(shortName(A))}</b> ${when ? `<span class="faint">${esc(when)}</span>` : ""}</div><div class="stem"></div>`, "mini");
       placeLabel(el, [A.nowPos.lon, A.nowPos.lat], 1.006);
     } else hideLabel("cand");
   }
 }
 
+/* ============================================================ live records ============================================================ */
+// Animals tracked right now: .github/workflows/live.yml publishes them to the live-data branch every six hours.
+const LIVE_URL = (() => {
+  const m = location.hostname.match(/^([\w-]+)\.github\.io$/), repo = location.pathname.split("/").filter(Boolean)[0];
+  return m && repo ? `https://raw.githubusercontent.com/${m[1]}/${repo}/live-data/live.json` : "data/live.json";
+})();
+const LIVE_DAYS = 3;  // a fix this recent counts as tracked right now (pipeline/live.py)
+// the photos sit next to the live file
+const liveFile = rel => new URL(rel, new URL(LIVE_URL, location.href)).href;
+
+// one code per distinct row, so a place named in two files is one place
+const rowIdx = {};
+function intern(table, row) {
+  const T = DB[table], m = rowIdx[table] || (rowIdx[table] = new Map(T.map((r, i) => [JSON.stringify(r), i])));
+  const k = JSON.stringify(row);
+  if (!m.has(k)) { m.set(k, T.length); T.push(row); }
+  return m.get(k);
+}
+/* Adds the animals of a live file, or of one kept copy, to DB. open: still followed (its days run up to now).
+   list: offer them in the picker, those the pipeline lists and that sent a fix in the last LIVE_DAYS. */
+function addLive(data, open, list) {
+  const P = (data.places || []).map(r => intern("places", r)), R = (data.regions || []).map(r => intern("regions", r)), C = (data.cities || []).map(r => intern("cities", r));
+  (data.placeGroups || []).forEach((g, i) => { if (PGS[g] && data.places[i]) PGS[g].add(data.places[i][0]); });
+  const re = (runs, M) => runs.map(([i, c]) => [i, c >= 0 ? M[c] : c]), alias = {};
+  for (const [k, sp] of Object.entries(data.species || {})) {
+    // a species the catalog already describes keeps its name and facts
+    const same = Object.keys(SPECIES).find(x => !x.startsWith("mb:") && SPECIES[x].sci === sp.sci);
+    if (same) { alias[k] = same; continue; }
+    if (SPECIES[k]) continue;
+    const cls = CLS[sp.cls] ? sp.cls : "land";
+    SPECIES[k] = { ko: sp.ko || sp.en || sp.sci, en: sp.en || sp.sci, sci: sp.sci, cls, iucn: sp.iucn || null, facts: [] };
+  }
+  for (const [sci, p] of Object.entries(data.photos || {}))
+    if (!DB.photos[sci] && p.s && p.l) DB.photos[sci] = { ...p, s: liveFile(p.s), l: liveFile(p.l) };
+  Object.assign(DB.sources, data.sources || {});
+  const now = Date.now();
+  for (const r of data.animals || []) {
+    const sp = alias[r.sp] || r.sp;
+    if (DB.byId.has(r.id) || !SPECIES[sp]) continue;
+    const A = prepAnimal({ ...r, sp, pl: re(r.pl, P), rg: re(r.rg, R), ci: re(r.ci, C) });
+    A.open = open;
+    DB.byId.set(A.id, A);
+    if (list && r.live && r.live.listed && now - A.t1 < LIVE_DAYS * DAY) DB.animals.push(A);
+  }
+}
+/* A copy of each adopted live record, in this browser: the pet stays when its animal leaves the live file
+   (no fix for a month, or the study stops sharing) or when the file doesn't load. */
+const SNAP_KEY = "nabiya.live.v1";
+function loadSnaps() { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "{}") || {}; } catch (e) { return {}; } }
+function snapOf(r, data) {
+  // the rows this record uses, renumbered
+  const sub = (table, runs) => { const m = new Map(), was = []; return [runs.map(([i, c]) => { if (c < 0) return [i, c]; if (!m.has(c)) { m.set(c, was.length); was.push(c); } return [i, m.get(c)]; }), was]; };
+  const [pl, P] = sub("places", r.pl), [rg, R] = sub("regions", r.rg), [ci, C] = sub("cities", r.ci);
+  const sci = (data.species[r.sp] || {}).sci || "", ph = data.photos || {};
+  return { generated: data.generated, places: P.map(c => data.places[c]), placeGroups: P.map(c => (data.placeGroups || [])[c] || null),
+    regions: R.map(c => data.regions[c]), cities: C.map(c => data.cities[c]), sources: { [r.src]: data.sources[r.src] },
+    species: { [r.sp]: data.species[r.sp] }, photos: Object.fromEntries([sci, sci.split(" ").slice(0, 2).join(" ")].filter(k => ph[k]).map(k => [k, ph[k]])),
+    animals: [{ ...r, pl, rg, ci }] };
+}
+function keepSnaps() {
+  if (!DB.live) return;
+  const snaps = loadSnaps(), mine = new Set(Store.state.pets.map(p => p.aid)), out = {};
+  for (const aid of mine) {
+    const r = DB.live.animals.find(x => x.id === aid);
+    if (r) out[aid] = snapOf(r, DB.live); else if (snaps[aid]) out[aid] = snaps[aid];
+  }
+  try { localStorage.setItem(SNAP_KEY, JSON.stringify(out)); } catch (e) { /* storage blocked or full */ }
+}
+
 /* ============================================================ boot ============================================================ */
 function wire() {
   $("#q").addEventListener("input", e => { App.q = e.target.value; refreshBrowse(); });
-  $("#onlySync").addEventListener("change", e => { App.onlySync = e.target.checked; refreshBrowse(); });
   $("#sort").addEventListener("change", e => { App.sort = e.target.value; renderList(); });
-  $("#moreF").addEventListener("click", e => { const f = $("#filters"), c = f.classList.toggle("collapsed"); e.target.textContent = c ? "필터 더 보기" : "필터 접기"; e.target.setAttribute("aria-expanded", !c); });
   $("#filters").addEventListener("click", e => {
     const c = e.target.closest(".chip"); if (!c) return;
     const f = c.closest(".chips").dataset.f, set = App.filters[f], k = c.dataset.k;
@@ -758,6 +690,8 @@ function wire() {
   $("#list").addEventListener("click", e => { const b = e.target.closest(".cand"); if (b) select(b.dataset.id); });
   $("#list").addEventListener("pointerover", e => { const b = e.target.closest(".cand"); const id = b ? b.dataset.id : null; if (id !== App.hover) { App.hover = id; refreshCand(); } });
   $("#list").addEventListener("pointerleave", () => { App.hover = null; refreshCand(); });
+  // a photo that doesn't load leaves its stand-in
+  document.addEventListener("error", e => { const im = e.target; if (im.tagName === "IMG" && im.parentElement && im.parentElement.classList.contains("ph")) im.parentElement.classList.add("none"); }, true);
   $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
   $("#tlDays").addEventListener("click", e => { const b = e.target.closest(".dpill[data-k]"); if (b) viewDay(+b.dataset.k); });
   $("#tlPrev").onclick = () => viewDay((App.dayView ?? App.lastK) - 1);
@@ -778,48 +712,68 @@ function wire() {
   Globe.onUserMove = () => { if (App.mode === "pet" && Globe.following) { Globe.setFollow(false); $("#cFollow").setAttribute("aria-pressed", "false"); } };
   Globe.onPick = id => { if (App.mode !== "browse") return; if (id) select(id); };
   Globe.onHover = id => { if (App.mode !== "browse" || id === App.hover) return; App.hover = id; refreshCand(); };
-  Globe.onFrame = (dt, t) => { updateLabels(); drawScope(dt, t); };
-  document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("#mAdopt").hidden) $("#mAdopt").hidden = true; else if (!$("#mCert").hidden && $("#certGo").textContent === "닫기") $("#mCert").hidden = true; } });
+  Globe.onFrame = () => updateLabels();
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#mAdopt").hidden) $("#mAdopt").hidden = true; });
   // mobile: the globe band height follows the viewport
   const setStage = () => document.documentElement.style.setProperty("--stage-h", Math.round(Math.min(innerHeight * .52, innerWidth * 1.05)) + "px");
   setStage(); addEventListener("resize", setStage);
 }
 
+// the middle of where the animals are now, as [lon, lat]
+function centreOf(L) {
+  let x = 0, y = 0, z = 0;
+  for (const A of L) { const lo = A.nowPos.lon * Math.PI / 180, la = A.nowPos.lat * Math.PI / 180; x += Math.cos(la) * Math.cos(lo); y += Math.cos(la) * Math.sin(lo); z += Math.sin(la); }
+  if (Math.hypot(x, y, z) < 1e-6) return [110, 25];
+  return [Math.atan2(y, x) * 180 / Math.PI, clamp(Math.atan2(z, Math.hypot(x, y)) * 180 / Math.PI, -35, 45)];
+}
 async function boot() {
   Store.load();
   wire();
   const msg = $("#ldMsg");
-  let data;
-  try {
-    const r = await fetch("data/animals.json"); data = await r.json();
-  } catch (e) { msg.textContent = "동물 기록을 불러오지 못했어요. 새로고침해 주세요."; return; }
-  Object.assign(DB, { places: data.places, regions: data.regions, cities: data.cities, sources: data.sources });
-  DB.animals = data.animals.map(prepAnimal); DB.animals.forEach(A => DB.byId.set(A.id, A));
-  // a record that is no longer in the catalog can't be followed
-  Store.state.pets = Store.state.pets.filter(p => DB.byId.has(p.aid));
-  if (!Store.state.pets.some(p => p.id === Store.state.active)) Store.state.active = Store.state.pets[0] ? Store.state.pets[0].id : null;
+  // the picker offers animals tracked right now; the catalog of past records (data/animals.json) is read only
+  // for pets adopted from it before
+  const past = Store.state.pets.some(p => !p.aid.startsWith("mb"));
+  const [live, data] = await Promise.all([
+    fetch(LIVE_URL, { cache: "no-cache" }).then(r => r.ok ? r.json() : Promise.reject(r.status)).catch(() => null),
+    past ? fetch("data/animals.json").then(r => r.json()).catch(() => null) : null,
+  ]);
+  DB.live = live && Array.isArray(live.animals) ? live : null;
+  DB.liveFailed = !DB.live;
+  if (DB.live) addLive(DB.live, true, true);
+  // adopted animals that left the live file come from this browser's copy, ended; while the file can't be read,
+  // they go on as before
+  const snaps = loadSnaps();
+  for (const p of Store.state.pets) if (p.aid.startsWith("mb") && !DB.byId.has(p.aid) && snaps[p.aid]) addLive(snaps[p.aid], DB.liveFailed, false);
+  if (data) {
+    for (const [t, k] of [["places", "pl"], ["regions", "rg"], ["cities", "ci"]]) {
+      const M = data[t].map(r => intern(t, r));
+      for (const r of data.animals) r[k] = r[k].map(([i, c]) => [i, c >= 0 ? M[c] : c]);
+    }
+    Object.assign(DB.sources, data.sources);
+    for (const r of data.animals) if (!DB.byId.has(r.id)) DB.byId.set(r.id, prepAnimal(r));
+    // a past record that is no longer in the catalog can't be followed
+    Store.state.pets = Store.state.pets.filter(p => p.aid.startsWith("mb") || DB.byId.has(p.aid));
+  }
+  if (!petsHere().some(p => p.id === Store.state.active)) Store.state.active = petsHere()[0] ? petsHere()[0].id : null;
+  keepSnaps();
   const now = Date.now();
-  for (const A of DB.animals) {
-    A.sync = syncInfo(A, now);
-    const t = A.sync ? A.sync.t : A.T[0];
+  for (const A of DB.byId.values()) {
+    A.sync = A.live ? null : syncInfo(A, now);
+    const t = A.live ? A.t1 : A.sync ? A.sync.t : A.T[0];
     A.nowPos = posAt(A, t); A.nowPlace = placeName(runAt(A.pl, nearestIdx(A, t)));
+    A.nowGroups = new Set(placeGroups(A.nowPlace || ""));
   }
   msg.textContent = "지구를 그리는 중…";
   let ok = false;
   try { ok = typeof THREE !== "undefined" && await Globe.init($("#globe")); } catch (e) { ok = false; }
-  if (!ok) {
-    $("#stage").insertAdjacentHTML("beforeend", `<div class="empty" style="position:absolute;inset:auto 0 40% 0">이 기기에서는 3D 지구를 그릴 수 없어요.</div>`);
-    // no render loop from the globe: keep the scope window alive on its own
-    let last = performance.now();
-    const loop = now2 => { const dt = Math.min((now2 - last) / 1000, .1); last = now2; drawScope(dt, now2 / 1000); requestAnimationFrame(loop); };
-    requestAnimationFrame(loop);
-  }
+  if (!ok) $("#stage").insertAdjacentHTML("beforeend", `<div class="empty" style="position:absolute;inset:auto 0 40% 0">이 기기에서는 3D 지구를 그릴 수 없어요.</div>`);
   if (ok) {
     Globe.setTime(now);
     Globe.setCandidates(DB.animals.map(A => ({ id: A.id, lon: A.nowPos.lon, lat: A.nowPos.lat, color: CLS[A.S.cls].color })));
   }
   $("#loading").classList.add("done"); setTimeout(() => $("#loading").remove(), 900);
-  if (activePet()) enterPet(); else { enterBrowse(); if (ok) Globe.flyTo(110, 25, Globe.homeDist(), 10); }
+  // straight to a live pet; a pet from the past records waits behind the mode button
+  if (activePet() && activePet().aid.startsWith("mb")) enterPet(); else { enterBrowse(); if (ok) Globe.flyTo(...centreOf(DB.animals), Globe.homeDist(), 10); }
   setInterval(() => { if (App.mode === "pet") tick(false); else { renderClock(); Globe.setTime(Date.now()); } }, 1000);
   renderClock();
   if (ok) setTimeout(() => Globe.upgrade(), 1500);

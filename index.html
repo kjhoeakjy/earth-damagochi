@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>나비야 나비야</title>
+<meta name="description" content="과학자들이 위성 태그로 실제로 따라간 새, 물범, 고래, 거북, 순록 가운데 한 마리를 입양해 그 기록을 하루하루 진짜 지구 위에서 함께 따라가요.">
+<meta name="theme-color" content="#03050a">
+<meta property="og:title" content="나비야 나비야">
+<meta property="og:description" content="실제 위성 추적 기록으로 만든 동물 다마고치. 위치를 잰 시각, 장소, 태그 상태가 그대로 하루하루의 관측 일지가 돼요.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M19.2 19.6C15 8.6 5.6 5.4 3.6 10.6 2 15.4 8.4 19.8 19.2 20.4zM19.2 21.2c-7 .4-12.6 3.8-10.4 8.6 2.4 4.4 8.6.2 10.4-7.6zM20.8 19.6C25 8.6 34.4 5.4 36.4 10.6c1.6 4.8-4.8 9.2-15.6 9.8zM20.8 21.2c7 .4 12.6 3.8 10.4 8.6-2.4 4.4-8.6.2-10.4-7.6z' fill='%23f5a65b' stroke='%2324150a' stroke-width='1.2'/%3E%3Cpath d='M20 12.6c1.1 3.4 1.1 13.6 0 16.8-1.1-3.2-1.1-13.4 0-16.8z' fill='%23eef2f8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Diphylleia&family=Gaegu:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-mode="browse">
+<div id="stage">
+  <canvas id="globe" aria-label="실제 위성 사진으로 만든 3D 지구. 끌어서 돌리고, 휠이나 두 손가락으로 확대해요."></canvas>
+  <div id="labels" aria-hidden="true"></div>
+</div>
+
+<div id="loading" role="status">
+  <div class="ld">
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <g class="wing l"><path d="M23 25C17 12 6 9 5 16c-1 6 7 10 18 10z" fill="#f5a65b" stroke="#2a1708" stroke-width="1.4"/><path d="M23 27c-8 0-14 4-11 10 3 5 10-1 11-9z" fill="#e8893d" stroke="#2a1708" stroke-width="1.4"/></g>
+      <g class="wing r"><path d="M25 25c6-13 17-16 18-9 1 6-7 10-18 10z" fill="#f5a65b" stroke="#2a1708" stroke-width="1.4"/><path d="M25 27c8 0 14 4 11 10-3 5-10-1-11-9z" fill="#e8893d" stroke="#2a1708" stroke-width="1.4"/></g>
+      <path d="M24 17c1.2 3 1.2 13 0 17-1.2-4-1.2-14 0-17z" fill="#eef2f8"/>
+    </svg>
+    <span id="ldMsg">진짜 지구를 불러오는 중…</span>
+  </div>
+</div>
+
+<div id="ui">
+  <header class="brand">
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+      <defs>
+        <radialGradient id="mkw" cx="35%" cy="35%" r="85%"><stop offset="0" stop-color="#ffd8ac"/><stop offset=".55" stop-color="#f5a65b"/><stop offset="1" stop-color="#b85d1f"/></radialGradient>
+      </defs>
+      <g class="w wl">
+        <path d="M19.2 19.6C15 8.6 5.6 5.4 3.6 10.6 2 15.4 8.4 19.8 19.2 20.4z" fill="url(#mkw)" stroke="#24150a" stroke-width="1.15"/>
+        <path d="M19.2 21.2c-7 .4-12.6 3.8-10.4 8.6 2.4 4.4 8.6.2 10.4-7.6z" fill="url(#mkw)" stroke="#24150a" stroke-width="1.15"/>
+        <circle cx="5.6" cy="11.4" r=".8" fill="#fff"/><circle cx="7.6" cy="9" r=".6" fill="#fff"/><circle cx="10.6" cy="29.6" r=".6" fill="#fff"/>
+      </g>
+      <g transform="matrix(-1 0 0 1 40 0)">
+        <g class="w wr">
+          <path d="M19.2 19.6C15 8.6 5.6 5.4 3.6 10.6 2 15.4 8.4 19.8 19.2 20.4z" fill="url(#mkw)" stroke="#24150a" stroke-width="1.15"/>
+          <path d="M19.2 21.2c-7 .4-12.6 3.8-10.4 8.6 2.4 4.4 8.6.2 10.4-7.6z" fill="url(#mkw)" stroke="#24150a" stroke-width="1.15"/>
+          <circle cx="5.6" cy="11.4" r=".8" fill="#fff"/><circle cx="7.6" cy="9" r=".6" fill="#fff"/><circle cx="10.6" cy="29.6" r=".6" fill="#fff"/>
+        </g>
+      </g>
+      <path d="M20 12.6c1.1 3.4 1.1 13.6 0 16.8-1.1-3.2-1.1-13.4 0-16.8z" fill="#eef2f8"/>
+      <path d="M20 13c-.6-2.6-2.4-4.6-4.2-5.6M20 13c.6-2.6 2.4-4.6 4.2-5.6" stroke="#eef2f8" stroke-width=".9" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>나비야 나비야</h1>
+      <p>실제 위성 추적 기록을 하루하루 함께 따라가요</p>
+    </div>
+  </header>
+
+  <div class="topbar">
+    <div class="clock" id="clock"></div>
+    <button class="btn small" id="btnMode" type="button" hidden></button>
+  </div>
+
+  <aside class="left">
+    <section id="picker" class="panel" aria-label="입양할 친구 고르기">
+      <div class="head">
+        <div>
+          <div class="eyebrow">친구 고르기</div>
+          <h2>어떤 친구를 만나 볼까요?</h2>
+        </div>
+        <label class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+          <input id="q" type="search" placeholder="종 이름, 출발지, 지나간 나라, 태그 번호" autocomplete="off" aria-label="검색">
+        </label>
+        <div class="filters collapsed" id="filters">
+          <div class="frow"><span>분류</span><div class="chips" data-f="cls"></div></div>
+          <div class="frow"><span>종</span><div class="chips" data-f="sp"></div></div>
+          <div class="frow"><span>출발지</span><div class="chips" data-f="area"></div></div>
+          <div class="frow more"><span>가는 곳</span><div class="chips" data-f="visit"></div></div>
+          <div class="frow more"><span>나이</span><div class="chips" data-f="age"></div></div>
+          <div class="frow more"><span>성별</span><div class="chips" data-f="sex"></div></div>
+          <div class="frow more"><span>여정</span><div class="chips" data-f="scale"></div></div>
+          <div class="frow more"><span>기록</span><div class="chips" data-f="dur"></div></div>
+        </div>
+        <div class="sortrow">
+          <label class="toggle"><input type="checkbox" id="onlySync"> 오늘 날짜에 맞춘 친구만</label>
+          <button class="btn small" id="moreF" type="button" aria-expanded="false">필터 더 보기</button>
+        </div>
+        <div class="sortrow">
+          <span id="count" class="num"></span>
+          <select id="sort" aria-label="정렬">
+            <option value="rec">추천순</option>
+            <option value="sync">오늘 날짜 맞춤 먼저</option>
+            <option value="km">이동 거리 긴 순</option>
+            <option value="far">집에서 멀리 간 순</option>
+            <option value="days">기록 기간 긴 순</option>
+            <option value="places">지나간 곳 많은 순</option>
+          </select>
+        </div>
+      </div>
+      <div id="list" class="scroll" role="listbox" aria-label="입양할 수 있는 동물"></div>
+    </section>
+
+    <section id="pet" class="panel scroll" aria-label="내 친구" hidden>
+      <div class="chips" id="petSwitch"></div>
+      <div class="scope" id="scope" role="button" tabindex="0" aria-label="쓰다듬기">
+        <canvas id="scopeCv" width="464" height="464"></canvas>
+        <div class="glass"></div>
+        <div class="hint">눌러서 쓰다듬기</div>
+      </div>
+      <div class="petname">
+        <h2 id="petName"></h2>
+        <div class="sub" id="petSub"></div>
+      </div>
+      <div class="status"><span class="live" id="liveDot"></span><span id="petStatus"></span></div>
+      <div class="sigline" id="petSig"></div>
+      <div class="stats" id="petStats"></div>
+      <div class="others" id="petOthers"></div>
+      <div class="bond">
+        <div class="hearts" id="hearts" aria-hidden="true"></div>
+        <div class="lvl" id="lvl"></div>
+      </div>
+    </section>
+  </aside>
+
+  <aside class="right">
+    <section id="detail" class="panel" aria-label="친구 소개">
+      <div class="scroll" id="detailBody"></div>
+      <div class="foot" id="detailFoot" hidden></div>
+    </section>
+
+    <section id="journal" class="panel" aria-label="함께한 기록" hidden>
+      <div class="tabs" role="tablist" aria-label="함께한 기록">
+        <button class="tab" role="tab" data-tab="day" aria-selected="true" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4"/></svg>일지</button>
+        <button class="tab" role="tab" data-tab="trip" aria-selected="false" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 18h6a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h6" transform="translate(0 2)"/></svg>여정</button>
+        <button class="tab" role="tab" data-tab="signal" aria-selected="false" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 13v8"/><circle cx="12" cy="11" r="2"/><path d="M8.2 7.2a5.5 5.5 0 0 0 0 7.6M15.8 7.2a5.5 5.5 0 0 1 0 7.6M5.3 4.3a9.5 9.5 0 0 0 0 13.4M18.7 4.3a9.5 9.5 0 0 1 0 13.4"/></svg>신호</button>
+        <button class="tab" role="tab" data-tab="passport" aria-selected="false" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10.5" r="3.2"/><path d="M9 16.5h6" stroke-linecap="round"/></svg>여권</button>
+        <button class="tab" role="tab" data-tab="badges" aria-selected="false" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"/><path d="m8.5 13.5-1.8 7 5.3-2.6 5.3 2.6-1.8-7"/></svg>배지</button>
+        <button class="tab" role="tab" data-tab="info" aria-selected="false" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>정보</button>
+      </div>
+      <div class="tabpanel scroll" id="tabBody" role="tabpanel"></div>
+    </section>
+  </aside>
+
+  <div class="bottom">
+    <div id="timeline" class="panel" hidden>
+      <button class="iconbtn" id="tlPrev" type="button" aria-label="이전 날">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m14.5 6-6 6 6 6"/></svg></button>
+      <div class="days scroll" id="tlDays" role="list" aria-label="날짜별 기록"></div>
+      <button class="iconbtn" id="tlNext" type="button" aria-label="다음 날">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9.5 6 6 6-6 6"/></svg></button>
+      <div class="tl-label" id="tlLabel"></div>
+    </div>
+  </div>
+</div>
+
+<div class="mapctl" id="mapctl">
+  <button class="iconbtn" id="cFollow" type="button" aria-pressed="true" aria-label="친구 따라가기" title="친구 따라가기">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  <button class="iconbtn" id="cIn" type="button" aria-label="가까이 보기" title="가까이">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button class="iconbtn" id="cOut" type="button" aria-label="멀리 보기" title="멀리">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+  <button class="iconbtn" id="cHome" type="button" aria-label="지구 전체 보기" title="지구 전체">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/></svg></button>
+</div>
+
+<div class="modal" id="mAdopt" hidden>
+  <div class="sheet panel" role="dialog" aria-modal="true" aria-labelledby="adTitle" id="adSheet"></div>
+</div>
+
+<div class="modal" id="mCert" hidden>
+  <div role="dialog" aria-modal="true" aria-label="입양 증서" style="width:min(620px,100%)">
+    <div class="cert" id="cert"></div>
+    <div class="cert-actions">
+      <button class="btn primary" id="certGo" type="button">함께 시작하기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="js/core.js"></script>
+<script src="js/globe.js"></script>
+<script src="js/critter.js"></script>
+<script src="js/story.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

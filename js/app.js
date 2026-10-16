@@ -225,6 +225,7 @@ function openAdopt(A) {
       if (live) pet.liveSeen = A.t1;
       Store.state.pets.push(pet); Store.state.active = pet.id; Store.save(); keepSnaps();
       m.hidden = true; enterPet();
+      if (live) startReplay();
       toast(`${esc(josa(nm, "을/를"))} 입양했어요`);
     };
   };
@@ -238,6 +239,7 @@ const petsHere = () => Store.state.pets.filter(p => DB.byId.has(p.aid));
 function activePet() { const st = Store.state, ps = petsHere(); return ps.find(p => p.id === st.active) || ps[0] || null; }
 function enterPet() {
   const pet = activePet(); if (!pet) return enterBrowse();
+  stopReplay(false);
   App.mode = "pet"; App.pet = pet; App.A = DB.byId.get(pet.aid); App.lastK = -1; App.dayView = null; App.lastFix = App.lastSt = null;
   if (!TABS.includes(App.tab)) App.tab = "day";
   document.body.dataset.mode = "pet"; document.body.removeAttribute("data-sel");
@@ -248,7 +250,7 @@ function enterPet() {
   Globe.setHome([A.X[0], A.Y[0]]);
   const p = posAt(A, t); Globe.setMarker([p.lon, p.lat], "#ffd2a1");
   Globe.flyTo(p.lon, p.lat, Math.min(Globe.homeDist(), Globe.distFor(.35, .4)), 1800);
-  Globe.setFollow(true, () => { const q = posAt(App.A, Story.petClock(App.pet, App.A)); return [q.lon, q.lat]; });
+  Globe.setFollow(true, () => { const q = App.replay ? App.pos : posAt(App.A, Story.petClock(App.pet, App.A)); return q && [q.lon, q.lat]; });
   $("#cFollow").setAttribute("aria-pressed", "true");
   // a live record grows between visits; a past one is read up to the pet's clock
   const nNew = pet.mode === "live" ? (pet.liveSeen != null && pet.liveSeen < A.t1 ? fixesBetween(A, pet.liveSeen, A.t1) : 0)
@@ -262,6 +264,7 @@ function enterPet() {
 }
 function enterBrowse() {
   if (App.mode === "pet") Store.save();
+  stopReplay(false);
   App.mode = "browse"; document.body.dataset.mode = "browse";
   $("#picker").hidden = false; $("#detail").hidden = false; $("#pet").hidden = true; $("#journal").hidden = true; $("#timeline").hidden = true;
   Globe.setFollow(false); Globe.setHome(null); Globe.highlight(null, null); Globe.setOthers(null); Globe.setErrorDisk(null);
@@ -286,7 +289,7 @@ const typing = () => { const a = document.activeElement; return !!a && $("#tabBo
 
 // called every second in pet mode (and right away on entering)
 function tick(force) {
-  const pet = App.pet, A = App.A; if (!pet || App.mode !== "pet") return;
+  const pet = App.pet, A = App.A; if (!pet || App.mode !== "pet" || App.replay) return;
   const now = Date.now(), t = Story.petClock(pet, A, now), k = dayIndexAt(A, t);
   App.ended = Story.ended(pet, A, now);
   Globe.setTime(t); Globe.trackNow(t);
@@ -405,6 +408,7 @@ function renderTab(keep) {
   el.scrollTop = keep ? top : 0;
 }
 function viewDay(k, fly = true) {
+  stopReplay(true, false);
   const A = App.A, D = buildDays(A); k = clamp(k, 0, App.lastK); App.dayView = k;
   const d = D[k];
   Globe.highlight(d.a, Math.min(d.b, App.t));
@@ -416,6 +420,51 @@ function viewDay(k, fly = true) {
   if (narrow()) $("#journal").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function followNow() { const p = App.pos; Globe.setFollow(true); $("#cFollow").setAttribute("aria-pressed", "true"); if (p) Globe.flyTo(p.lon, p.lat, Math.min(Globe.camDistance(), 2.6), 1000); }
+
+/* ---------- replay: the record once, from its first fix to the pet's now, then back to now ---------- */
+function startReplay() {
+  const A = App.A, pet = App.pet; if (!A || !pet || !Globe.ok) return;
+  const t0 = A.T[0], t1 = Math.min(Story.petClock(pet, A), A.T[A.T.length - 1]);
+  if (t1 - t0 < 2 * DAY) return;
+  stopReplay(false);
+  App.replay = { t0, t1, ms: clamp(6000 + (t1 - t0) / DAY * 22, 8000, 22000), at: performance.now() + 1300, raf: 0 };
+  document.body.dataset.replay = "";
+  $("#timeline").hidden = true; $("#replay").hidden = false;
+  $("#rpWhat").textContent = trackCut(A) ? `${dateKo(t0)}부터 지금까지` : "첫 기록부터 지금까지";
+  Globe.setOthers(null); Globe.setErrorDisk(null); Globe.highlight(null, null);
+  Globe.showTrack(A, { color: "#f5a65b", now: t0, fresh: 1, fixes: false });
+  // the whole way in view, then the camera keeps the animal near the middle
+  const step = Math.max(1, Math.floor(A.T.length / 400)), lls = [];
+  for (let i = 0; i < A.T.length; i += step) lls.push([A.X[i], A.Y[i]]);
+  Globe.fitPoints(lls, .42); Globe.setFollow(true); $("#cFollow").setAttribute("aria-pressed", "true");
+  if (narrow()) window.scrollTo({ top: 0, behavior: "smooth" });
+  stepReplay();
+}
+function stepReplay() {
+  const R = App.replay, A = App.A; if (!R) return;
+  const now = performance.now(), f = clamp((now - R.at) / R.ms, 0, 1), t = R.t0 + (R.t1 - R.t0) * f;
+  Globe.trackNow(t);
+  const p = posAt(A, t); App.pos = p; Globe.setMarker([p.lon, p.lat]);
+  $("#rpDate").textContent = dateKo(t);
+  $("#rpWhere").textContent = placeName(runAt(A.pl, nearestIdx(A, t))) || "";
+  $("#rpKm").textContent = kmFmt(kmAt(A, t)) + "km";
+  $("#rpBar").style.width = (f * 100).toFixed(2) + "%";
+  if (f >= 1 && !R.end) R.end = now;
+  if (R.end && now - R.end > 1500) return stopReplay(true);
+  R.raf = requestAnimationFrame(stepReplay);
+}
+// back: return to the pet's now (fly: and look at it)
+function stopReplay(back, fly = true) {
+  const R = App.replay; if (!R) return;
+  cancelAnimationFrame(R.raf); App.replay = null;
+  delete document.body.dataset.replay;
+  $("#replay").hidden = true; $("#timeline").hidden = App.mode !== "pet";
+  if (!back || App.mode !== "pet") return;
+  const A = App.A, pet = App.pet, t = Story.petClock(pet, A);
+  Globe.showTrack(A, { color: "#f5a65b", now: t, meet: pet.anchorTrack, fresh: 1 });
+  tick(true);
+  if (fly) { Globe.setFollow(true); $("#cFollow").setAttribute("aria-pressed", "true"); Globe.flyTo(App.pos.lon, App.pos.lat, Math.min(Globe.homeDist(), Globe.distFor(.35, .4)), 1600); }
+}
 
 // one day: what the tag sent and where the animal was (the timeline below picks the day)
 function tabDay() {
@@ -443,7 +492,7 @@ function tabTrip() {
   rec.push(["가장 북쪽", `${A.Y[R.north] >= 0 ? "북위" : "남위"} ${Math.abs(A.Y[R.north]).toFixed(2)}°`, at(R.north), goT(A.T[R.north], [A.X[R.north], A.Y[R.north]])]);
   rec.push(["가장 남쪽", `${A.Y[R.south] >= 0 ? "북위" : "남위"} ${Math.abs(A.Y[R.south]).toFixed(2)}°`, at(R.south), goT(A.T[R.south], [A.X[R.south], A.Y[R.south]])]);
   rec.push([`${homeWord(A)}에서 가장 먼 곳`, `${kmFmt(hav(A.X[0], A.Y[0], A.X[R.far], A.Y[R.far]))}km`, at(R.far), goT(A.T[R.far], [A.X[R.far], A.Y[R.far]])]);
-  $("#tabBody").innerHTML = `<div class="sec"><h3>지금까지</h3>
+  $("#tabBody").innerHTML = `<div class="sec"><div class="sechead"><h3>지금까지</h3>${App.t - A.T[0] >= 2 * DAY ? `<button class="btn small" type="button" id="tReplay">처음부터 다시 보기</button>` : ""}</div>
     <div class="stats three"><div class="stat"><div class="k">총 이동</div><div class="v">${kmFmt(kmAt(A, t))}<small>km</small></div></div>
       <div class="stat"><div class="k">기록된 날</div><div class="v">${fmt(App.lastK + 1)}<small>일</small></div></div>
       <div class="stat"><div class="k">지나간 곳</div><div class="v">${PL.length}<small>곳</small></div></div></div>
@@ -456,6 +505,7 @@ function tabTrip() {
         <small>${esc([regionName(s.rg), cityName(s.ci) && cityName(s.ci) + " 근처"].filter(Boolean).join(" · "))}</small>
         <span class="mono">${spanShort(s.t0, s.t1)} · ${fmt(s.days, s.days < 10 ? 1 : 0)}일</span></button>`).join("")}</div>` : `<p class="muted small">없음</p>`}</div>
     ${A.se ? seasonHTML(Story.signal(A, t).seasons) : ""}`;
+  if ($("#tReplay")) $("#tReplay").onclick = () => startReplay();
   $$("[data-k]", $("#tabBody")).forEach(b => b.onclick = () => {
     const k = +b.dataset.k, ll = b.dataset.ll;
     if (ll) { const [lo, la] = ll.split(",").map(Number); viewDay(k, false); Globe.setFollow(false); $("#cFollow").setAttribute("aria-pressed", "false"); Globe.flyTo(lo, la, Math.min(Globe.camDistance(), 2.4), 1200); }
@@ -702,6 +752,7 @@ function wire() {
   document.addEventListener("error", e => { const im = e.target; if (im.tagName === "IMG" && im.parentElement && im.parentElement.classList.contains("ph")) im.parentElement.classList.add("none"); }, true);
   $$(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
   $("#tlDays").addEventListener("click", e => { const b = e.target.closest(".dpill[data-k]"); if (b) viewDay(+b.dataset.k); });
+  $("#rpSkip").onclick = () => stopReplay(true);
   $("#tlPrev").onclick = () => viewDay((App.dayView ?? App.lastK) - 1);
   $("#tlNext").onclick = () => viewDay((App.dayView ?? App.lastK) + 1);
   // the pet's clock position is saved when the page goes away, so the next visit can say what arrived since

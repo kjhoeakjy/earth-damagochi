@@ -1,10 +1,12 @@
 """Animals tracked right now, from Movebank, for 나비야 나비야.
 
 Finds the studies a Movebank account may download under an open licence (CC0, CC BY, CC BY-NC) whose animals
-sent a GPS fix in the last few days, follows a few animals from each, and writes them in the record format of
-data/animals.json. Only animals that are alive as far as the data says, still moving, and sending right now are
-offered ("listed"); the others stay in the file a while for anyone who adopted them. GitHub Actions runs it on a schedule (.github/workflows/live.yml). A state file carries each
-animal's track from run to run, so later runs download only the new fixes.
+sent a GPS fix in the last few days (without an account, or when Movebank refuses it, the studies open to
+everyone), follows a few animals from each, and writes them in the record format of data/animals.json. Only
+animals that are alive as far as the data says, still moving, and sending right now are offered ("listed"); the
+others stay in the file a while for anyone who adopted them. GitHub Actions runs it on a schedule
+(.github/workflows/live.yml). A state file carries each animal's track from run to run, so later runs download
+only the new fixes.
 
     MOVEBANK_USER=... MOVEBANK_PASS=... python3 pipeline/live.py --ne <Natural Earth dir> \\
         --state live/state.json --out live/live.json
@@ -57,7 +59,9 @@ class LicenseRequired(Exception):
 class Movebank:
     def __init__(self, user, password, base=API, pause=1.0):
         self.base = base.rstrip("/")
-        self.auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+        # without an account, Movebank shows only the studies open to everyone
+        self.auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode() if user else None
+        self.json_path = "json-auth" if user else "public/json"
         # cookies keep the session between reading licence terms and accepting them
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.pause, self.last, self.calls = pause, 0.0, 0
@@ -68,7 +72,9 @@ class Movebank:
             # Movebank serves one request at a time per address; leave a gap between them as well
             time.sleep(max(0.0, self.pause - (time.time() - self.last)))
             self.calls += 1
-            req = urllib.request.Request(url, headers={"Authorization": self.auth, "User-Agent": "nabiya-live/1"})
+            req = urllib.request.Request(url, headers={"User-Agent": "nabiya-live/1"})
+            if self.auth:
+                req.add_header("Authorization", self.auth)
             try:
                 with self.opener.open(req, timeout=180) as r:
                     body = r.read()
@@ -111,11 +117,11 @@ class Movebank:
             params["event_reduction_profile"] = "EURING_01"
         if limit:
             params["max_events_per_individual"] = limit
-        body = self.get("json-auth", params)
+        body = self.get(self.json_path, params)
         try:
             d = json.loads(body)
         except ValueError:
-            raise LicenseRequired(body)
+            raise ValueError(f"not JSON: {' '.join(body[:120].decode('utf-8', 'replace').split())!r}")
         out = {}
         for ind in d.get("individuals", []):
             fx = [(l["timestamp"], l["location_long"], l["location_lat"]) for l in ind.get("locations", [])
@@ -500,12 +506,8 @@ def main():
 
     raw_user, raw_password = os.environ.get("MOVEBANK_USER", ""), os.environ.get("MOVEBANK_PASS", "")
     user, password = raw_user.strip(), raw_password.strip()
-    if not user or not password:
-        print("MOVEBANK_USER and MOVEBANK_PASS are not set; nothing to do.", file=sys.stderr)
-        return 0
     now = pd.Timestamp(args.now, tz="UTC") if args.now else pd.Timestamp.now(tz="UTC")
     now_s = now.timestamp()
-    mb = Movebank(user, password, args.api, args.pause)
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
     for k in ("animals", "studies", "species"):
         state.setdefault(k, {})
@@ -513,16 +515,33 @@ def main():
     load = lambda path: json.loads(path.read_text()) if path.exists() else {}
     accepted, curated = load(args.licenses), load(args.species)
 
-    # 1. studies under an open licence, with GPS, whose animals sent fixes in the last LIVE_DAYS
-    try:
-        rows = mb.table(entity_type="study", i_have_download_access="true", attributes=",".join([
-            "id", "name", "license_type", "is_test", "timestamp_last_deployed_location", "sensor_type_ids",
-            "taxon_ids", "citation", "principal_investigator_name", "contact_person_name"]))
-    except urllib.error.HTTPError as e:
-        body = " ".join(e.read().decode("utf-8", "replace").split())[:300]
-        print(f"Movebank refused the study list (HTTP {e.code}): {body!r}", file=sys.stderr)
-        why_refused(args.api, mb, raw_user, raw_password)
-        return 1
+    # 1. studies under an open licence, with GPS, whose animals sent fixes in the last LIVE_DAYS; with the account
+    #    if it works, else those open to everyone
+    study_list = dict(entity_type="study", i_have_download_access="true", attributes=",".join([
+        "id", "name", "license_type", "is_test", "timestamp_last_deployed_location", "sensor_type_ids",
+        "taxon_ids", "citation", "principal_investigator_name", "contact_person_name"]))
+    rows = None
+    if user and password:
+        mb = Movebank(user, password, args.api, args.pause)
+        try:
+            rows = mb.table(**study_list)
+        except urllib.error.HTTPError as e:
+            body = " ".join(e.read().decode("utf-8", "replace").split())[:300]
+            print(f"Movebank refused the study list (HTTP {e.code}): {body!r}", file=sys.stderr)
+            why_refused(args.api, mb, raw_user, raw_password)
+            print("::warning::Movebank refused the account, so only studies open to everyone were read.",
+                  file=sys.stderr)
+    else:
+        print("MOVEBANK_USER and MOVEBANK_PASS are not set, so only studies open to everyone are read.",
+              file=sys.stderr)
+    if rows is None:
+        mb = Movebank(None, None, args.api, args.pause)
+        try:
+            rows = mb.table(**study_list)
+        except urllib.error.HTTPError as e:
+            body = " ".join(e.read().decode("utf-8", "replace").split())[:300]
+            print(f"Without an account the study list is refused too (HTTP {e.code}): {body!r}", file=sys.stderr)
+            return 1
     cands = []
     for r in rows:
         lic, last = OPEN_LICENSES.get(norm_license(r.get("license_type"))), ts(r.get("timestamp_last_deployed_location"))
@@ -538,8 +557,8 @@ def main():
         (first if c[0]["id"] in followed or key not in seen else rest).append(c)
         seen.add(key)
     cands = (first + rest)[:MAX_STUDIES]
-    print(f"{len(rows)} studies open to the account, {len(cands)} with an open licence and fixes "
-          f"in the last {LIVE_DAYS} days", file=sys.stderr)
+    print(f"{len(rows)} studies open to {'the account' if mb.auth else 'everyone'}, {len(cands)} with an open "
+          f"licence and fixes in the last {LIVE_DAYS} days", file=sys.stderr)
 
     # 2. animals and their new fixes, study by study
     active = sum(1 for a in state["animals"].values() if listed(a, now_s))

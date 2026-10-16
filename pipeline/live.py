@@ -43,6 +43,9 @@ VMAX = {"bird": 30, "sea": 4, "fish": 4, "land": 10}  # m/s, for dropping imposs
 HIDE_IUCN = {"CR", "EN"}
 # how a deployment ended, when it did (Movebank's deployment-end-type vocabulary)
 END_TYPES = {"dead", "equipment failure", "fall off", "removal", "captured", "released", "scheduled detachment"}
+# the deployment columns read (the default deployment table leaves out individual_id)
+DEPLOYMENT_COLUMNS = ["id", "individual_id", "tag_id", "deploy_on_timestamp", "deploy_off_timestamp",
+                      "deployment_end_type", "animal_life_stage", "animal_mass"]
 FAR_PAST = {"timestamp_start": "20000101000000000", "timestamp_end": "20000101000001000"}
 
 
@@ -173,7 +176,7 @@ def life_stage(s):
 def latest_deployments(mb, sid):
     """{individual id: its latest deployment}; empty when the study doesn't share its deployments."""
     try:
-        rows = mb.table(entity_type="deployment", study_id=sid)
+        rows = mb.table(entity_type="deployment", study_id=sid, attributes=",".join(DEPLOYMENT_COLUMNS))
     except urllib.error.HTTPError:
         return {}
     out = {}
@@ -192,7 +195,8 @@ def deployment_ended(d, now_s):
 
 def listed(a, now_s):
     """Offered in the app: alive as far as the data says, still moving, and sending right now."""
-    return a["lastT"] >= now_s - LIVE_DAYS * 86400 and not a.get("dead") and not a.get("still")
+    return (a["lastT"] >= now_s - LIVE_DAYS * 86400 and not a.get("dead") and not a.get("ended")
+            and not a.get("still"))
 
 
 # --------------------------------------------------------------------------
@@ -288,8 +292,9 @@ def is_still(df):
 
 def tiered(df, now, vmax):
     """Clean a track and bin it by age (TIERS): fine near now, coarser further back. Fixes from the future
-    (a tag with a wrong clock) are left out."""
+    (a tag with a wrong clock) and fixes older than HISTORY_DAYS are left out."""
     age = (now - df.t).dt.total_seconds() / 86400
+    df, age = df[age < HISTORY_DAYS], age[age < HISTORY_DAYS]
     parts, lo = [], 0.0
     for days, bin_h in TIERS:
         part = df[(age >= lo) & ((age < days) if days is not None else True)]
@@ -398,6 +403,18 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
     noted = {i.get("id"): bool((i.get("death_comments") or "").strip()) for i in inds}
     for a in group.values():
         a["dead"] = a.get("dead") or noted.get(a["ind"], False)
+    # every run: a deployment can end (the animal died, the tag fell off) while it is followed
+    deps = latest_deployments(mb, sid)
+    for a in group.values():
+        d = deps.get(a["ind"])
+        if d:
+            a["ended"] = deployment_ended(d, now_s)
+            if not a.get("deployOn"):
+                a["deployOn"] = ts(d.get("deploy_on_timestamp"))
+            if not a.get("stage"):
+                a["stage"], a["stageKo"] = life_stage(d.get("animal_life_stage"))
+            if a.get("mass") is None:
+                a["mass"] = num(d.get("animal_mass"))
     sending = sum(1 for a in group.values() if listed(a, now_s))
     added = 0
     if room > 0 and sending < PER_STUDY:
@@ -413,7 +430,6 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
                 continue
             fresh.append((ts(i.get("timestamp_start")) or end, i, taxon))
         fresh.sort(key=lambda f: f[0])  # longest records first
-        deps = latest_deployments(mb, sid) if fresh else {}
         for start, i, taxon in fresh:
             if added >= min(PER_STUDY - sending, room):
                 break
@@ -450,6 +466,12 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
         for l, fx in mb.locations(sid, batch, more[0][0] + 1, limit=20000).items():
             got.setdefault(l, []).extend(fx)
         more = more[len(batch):]
+    for l in first:
+        fx = got.get(l, [])
+        print(f"  {l}: " + (f"{len(fx)} fixes, newest {(now_s * 1000 - max(f[0] for f in fx)) / 3.6e6:.0f} h ago"
+                            if fx else "no fixes"), file=sys.stderr)
+    if set(got) - set(by_local):
+        print(f"  fixes for animals not asked for: {sorted(set(got) - set(by_local))[:5]}", file=sys.stderr)
     for l, fx in got.items():
         a = group.get(by_local.get(l))
         fx = [f for f in fx if a is not None and f[0] > a["lastRaw"]]
@@ -592,6 +614,7 @@ def main():
         if df is not None and len(df):
             df = tiered(df, now, VMAX[state["species"][sci]["cls"]])
         if df is None or len(df) < 2:
+            print(f"{k}: no usable track ({0 if df is None else len(df)} points), dropped", file=sys.stderr)
             del state["animals"][k]
             continue
         a["pts"], a["lastT"], a["still"] = frame_pts(df), int(df.t.iloc[-1].timestamp()), is_still(df)
@@ -600,6 +623,7 @@ def main():
         else:
             a.setdefault("unlisted", now_s)
             if now_s - a["unlisted"] > KEEP_DAYS * 86400 or a["lastT"] < now_s - KEEP_DAYS * 86400:
+                print(f"{k}: no fix for {(now_s - a['lastT']) / 86400:.0f} days, dropped", file=sys.stderr)
                 del state["animals"][k]
 
     # 4. records in the data/animals.json format, plus species and sources
@@ -631,10 +655,11 @@ def main():
             "area": area_of(lab, df.lon.iloc[0], df.lat.iloc[0]), "sex": a.get("sex"), "age": a.get("stage"),
             "ageText": a.get("stageKo"), "nick": a.get("nick") or None, "born": a.get("born") or None,
             "mass": a.get("mass"), "deployOn": int(a["deployOn"]) if a.get("deployOn") else None,
+            "trackStart": int(a["start"]) if a.get("start") else None,
             **track_fields(df, lbl),
             "live": {"study": a["study"], "ind": a["ind"], "since": int(a["since"]), "last": a["lastRaw"] // 1000,
                      "listed": listed(a, now_s), "quiet": a["lastT"] < now_s - LIVE_DAYS * 86400,
-                     "dead": bool(a.get("dead")), "still": bool(a.get("still"))}})
+                     "dead": bool(a.get("dead")), "ended": bool(a.get("ended")), "still": bool(a.get("still"))}})
     places, regions, cities = lab.tables()
     for rec in animals:
         rec["home"] = places[rec["home"]][0]

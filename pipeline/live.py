@@ -329,7 +329,7 @@ def update_photos(state, names, curated, folder, now_s):
 
     def needs(n):
         p = photos.get(n)
-        if not p or (want(n) and want(n) != p.get("file", p.get("tried"))):
+        if not p or p.get("asked", "") != want(n):  # a photo named in live_species.json, or no longer
             return True
         if not p.get("file"):
             return p.get("checked", 0) < now_s - PHOTO_RETRY_DAYS * 86400
@@ -339,13 +339,16 @@ def update_photos(state, names, curated, folder, now_s):
     if not todo:
         return
     try:
-        files = {n: want(n) for n in todo if want(n)}
-        if len(files) < len(todo):
-            files.update(species_images([n for n in todo if n not in files]))
-        info = commons_info(sorted(set(files.values())))
+        image = species_images(todo)
+        info = commons_info(sorted({want(n) for n in todo if want(n)} | set(image.values())))
     except Exception as e:  # the next run asks again
         print(f"photo lookup failed: {e!r}", file=sys.stderr)
         return
+    files = {}
+    for n in todo:
+        if want(n) and want(n) not in info:
+            print(f"  {n}: {want(n)} is not on Commons, so the Wikidata image instead", file=sys.stderr)
+        files[n] = want(n) if want(n) in info else image.get(n)
     (folder / "photos").mkdir(parents=True, exist_ok=True)
     here = lambda p: p.get("file") and all((folder / p.get(k, "-")).exists() for k in PHOTO_SIZES)
     done = {p["file"]: p for p in photos.values() if here(p)}
@@ -353,12 +356,15 @@ def update_photos(state, names, curated, folder, now_s):
         f = files.get(n)
         i = info.get(f) if f else None
         if not i:
-            photos[n] = {"checked": now_s, **({"tried": f} if f else {})}
+            photos[n] = {"checked": now_s, "asked": want(n)}
             print(f"  {n}: no photo on Wikidata or Commons", file=sys.stderr)
             continue
         meta = {k: strip_html(str(v.get("value") or "")) for k, v in i.get("extmetadata", {}).items()}
-        by = meta.get("Artist") or meta.get("Credit") or ""
-        rec = {"file": f, "page": i.get("descriptionurl") or "", "by": by if len(by) <= 80 else by[:79] + "…",
+        # the author, without the file names a derived photo's credit lists
+        by = re.sub(r"\S+\.(jpe?g|png|tiff?|svg)\b\s*:?\s*", "", meta.get("Artist") or meta.get("Credit") or "",
+                    flags=re.I).strip(" :")
+        rec = {"file": f, "asked": want(n), "page": i.get("descriptionurl") or "",
+               "by": by if len(by) <= 80 else by[:79] + "…",
                "lic": meta.get("LicenseShortName") or meta.get("UsageTerms") or "", "checked": now_s}
         if f in done:  # the same photo as another species (a subspecies), already here
             photos[n] = {**rec, **{k: done[f][k] for k in PHOTO_SIZES}}
@@ -551,8 +557,9 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
         for i in inds:
             end, taxon = ts(i.get("timestamp_end")), (i.get("taxon_canonical_name")
                                                      or i.get("individual_taxon_canonical_name") or "").strip()
-            # the summary times can lag a day behind the fixes
-            if (i.get("id") in mine or not taxon or not has_gps(i) or end is None or noted.get(i.get("id"))
+            # the summary times can lag a day behind the fixes; an animal known only by its genus could be of a
+            # threatened species (see HIDE_IUCN)
+            if (i.get("id") in mine or len(taxon.split()) < 2 or not has_gps(i) or end is None or noted.get(i.get("id"))
                     or end < now_s - (LIVE_DAYS + 1) * 86400
                     or state["species"].get(taxon, {}).get("iucn") in HIDE_IUCN):
                 continue
@@ -732,10 +739,14 @@ def main():
             failed += 1
             print(f"study {r['id']}: {e!r}", file=sys.stderr)
 
-    # 3. clean and bin; drop animals without a usable track, of a species too threatened to show, or unlisted
-    #    for longer than KEEP_DAYS
+    # 3. clean and bin; drop animals without a usable track, not identified to species, of a species too
+    #    threatened to show, or unlisted for longer than KEEP_DAYS
     for k, a in list(state["animals"].items()):
         sci = a["taxon"]
+        if len(sci.split()) < 2:
+            print(f"{k} ({sci}): not identified to species, left out", file=sys.stderr)
+            del state["animals"][k]
+            continue
         if sci not in state["species"] or state["species"][sci].get("retry") or "ko" not in state["species"][sci] or (
                 sci in curated and any(
                 state["species"][sci].get(f) != v for f, v in curated[sci].items())):

@@ -327,7 +327,7 @@ def credit(s):
     s = re.sub(r"\S+\.(jpe?g|png|tiff?|svg)\b\s*:?\s*", "", s, flags=re.I)
     s = re.sub(r"\bOriginal uploader was (.+?) at \S*wikipedia\S*", r"\1", s, flags=re.I)
     s = re.sub(r"\s*\bderivative work:\s*", ", ", s, flags=re.I)
-    s = re.sub(r"\s*\(talk\)", "", s, flags=re.I)
+    s = re.sub(r"\s*\(\s*talk\s*\)", "", s, flags=re.I)
     s = re.sub(r"\s+", " ", s).strip(" :,")
     return s if len(s) <= 80 else s[:79] + "…"
 

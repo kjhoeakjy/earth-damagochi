@@ -196,7 +196,7 @@ def deployment_ended(d, now_s):
 def listed(a, now_s):
     """Offered in the app: alive as far as the data says, still moving, and sending right now."""
     return (a["lastT"] >= now_s - LIVE_DAYS * 86400 and not a.get("dead") and not a.get("ended")
-            and not a.get("still"))
+            and not a.get("still") and not a.get("unsure"))
 
 
 # --------------------------------------------------------------------------
@@ -230,22 +230,28 @@ def lookup_species(sci, curated, net=True):
             print(f"  GBIF lookup failed for {sci}: {e}", file=sys.stderr)
             s["retry"] = True
     if net and not all(k in s for k in ("ko", "en", "iucn")):
-        q = ('SELECT ?ko ?en ?st WHERE { ?i wdt:P225 "%s" . '
+        # a Korean name: the taxon's common name, else its Korean label or Korean Wikipedia title when in Hangul
+        q = ('SELECT ?ko ?kol ?kow ?en ?st WHERE { ?i wdt:P225 "%s" . '
              'OPTIONAL { ?i wdt:P1843 ?ko FILTER(LANG(?ko) = "ko") } '
+             'OPTIONAL { ?i rdfs:label ?kol FILTER(LANG(?kol) = "ko") } '
+             'OPTIONAL { ?w schema:about ?i ; schema:isPartOf <https://ko.wikipedia.org/> ; schema:name ?kow } '
              'OPTIONAL { ?i wdt:P1843 ?en FILTER(LANG(?en) = "en") } '
              'OPTIONAL { ?i wdt:P141 ?s . ?s rdfs:label ?st FILTER(LANG(?st) = "en") } } LIMIT 10') % sci.replace('"', "")
         try:
             rows = http_json("https://query.wikidata.org/sparql?" + urllib.parse.urlencode(
                 {"query": q, "format": "json"}))["results"]["bindings"]
+            for key in ("ko", "kol", "kow"):
+                for r in rows:
+                    if key in r and re.search("[가-힣]", r[key]["value"]):
+                        s.setdefault("ko", r[key]["value"].strip())
             for r in rows:
-                if "ko" in r:
-                    s.setdefault("ko", r["ko"]["value"])
                 if "en" in r:
                     s.setdefault("en", r["en"]["value"][:1].upper() + r["en"]["value"][1:])
                 if "st" in r and r["st"]["value"].lower() in IUCN_EN:
                     s.setdefault("iucn", IUCN_EN[r["st"]["value"].lower()])
-        except Exception as e:
+        except Exception as e:  # without the IUCN status the animals wait (see "unsure"); the next run asks again
             print(f"  Wikidata lookup failed for {sci}: {e}", file=sys.stderr)
+            s["retry"] = True
     tx = s.get("taxon", {})
     if "cls" not in s:
         c = tx.get("class")
@@ -470,6 +476,12 @@ def follow_study(mb, state, r, lic, now_s, room, accepted):
         fx = got.get(l, [])
         print(f"  {l}: " + (f"{len(fx)} fixes, newest {(now_s * 1000 - max(f[0] for f in fx)) / 3.6e6:.0f} h ago"
                             if fx else "no fixes"), file=sys.stderr)
+    recent_fix = (now_s - (LIVE_DAYS + 1) * 86400) * 1000
+    if first and not any(got.get(l) and max(f[0] for f in got[l]) >= recent_fix for l in first):
+        # the study's summary says its animals are sending, but the fixes this account may see are old (the owner
+        # holds recent data back): look again in a week
+        st["lagging"] = now_s
+        print(f"  the newest fixes open to this account are old; study {sid} waits a week", file=sys.stderr)
     if set(got) - set(by_local):
         print(f"  fixes for animals not asked for: {sorted(set(got) - set(by_local))[:5]}", file=sys.stderr)
     for l, fx in got.items():
@@ -565,12 +577,13 @@ def main():
             print(f"Without an account the study list is refused too (HTTP {e.code}): {body!r}", file=sys.stderr)
             return 1
     cands = []
+    followed = {a["study"] for a in state["animals"].values()}
     for r in rows:
         lic, last = OPEN_LICENSES.get(norm_license(r.get("license_type"))), ts(r.get("timestamp_last_deployed_location"))
         if (lic and (r.get("is_test") or "").lower() != "true" and has_gps(r) and last
-                and last >= now_s - (LIVE_DAYS + 1) * 86400):
+                and last >= now_s - (LIVE_DAYS + 1) * 86400
+                and (r["id"] in followed or state["studies"].get(r["id"], {}).get("lagging", 0) < now_s - 7 * 86400)):
             cands.append((r, lic, last))
-    followed = {a["study"] for a in state["animals"].values()}
     # studies already followed first, then the most recent, one per taxon group before seconds
     cands.sort(key=lambda c: (c[0]["id"] not in followed, -c[2]))
     seen, first, rest = set(), [], []
@@ -601,9 +614,12 @@ def main():
     #    for longer than KEEP_DAYS
     for k, a in list(state["animals"].items()):
         sci = a["taxon"]
-        if sci not in state["species"] or state["species"][sci].get("retry") or (sci in curated and any(
+        if sci not in state["species"] or state["species"][sci].get("retry") or "ko" not in state["species"][sci] or (
+                sci in curated and any(
                 state["species"][sci].get(f) != v for f, v in curated[sci].items())):
             state["species"][sci] = lookup_species(sci, curated, net=not args.no_species_lookup)
+        # a species whose lookup failed isn't offered until its IUCN status is known
+        a["unsure"] = bool(state["species"][sci].get("retry"))
         if state["species"][sci].get("iucn") in HIDE_IUCN:
             print(f"{k} ({sci}, IUCN {state['species'][sci]['iucn']}): left out", file=sys.stderr)
             del state["animals"][k]

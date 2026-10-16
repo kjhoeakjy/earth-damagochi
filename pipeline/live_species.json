@@ -1,0 +1,98 @@
+{
+ "Larus argentatus": {
+  "ko": "재갈매기",
+  "look": "gull"
+ },
+ "Larus fuscus": {
+  "ko": "줄무늬노랑발갈매기",
+  "look": "gull"
+ },
+ "Larus armenicus": {
+  "look": "gull"
+ },
+ "Ichthyaetus melanocephalus": {
+  "look": "gull"
+ },
+ "Chroicocephalus ridibundus": {
+  "ko": "붉은부리갈매기",
+  "look": "gull"
+ },
+ "Ciconia ciconia": {
+  "ko": "홍부리황새",
+  "look": "stork"
+ },
+ "Ciconia nigra": {
+  "ko": "먹황새",
+  "look": "stork"
+ },
+ "Platalea leucorodia": {
+  "ko": "노랑부리저어새",
+  "look": "spoonbill"
+ },
+ "Numenius arquata": {
+  "ko": "마도요",
+  "look": "curlew"
+ },
+ "Haliaeetus leucocephalus": {
+  "ko": "흰머리수리",
+  "look": "eagle"
+ },
+ "Haliaeetus albicilla": {
+  "ko": "흰꼬리수리",
+  "look": "hawk"
+ },
+ "Aquila chrysaetos": {
+  "ko": "검독수리",
+  "look": "hawk"
+ },
+ "Cathartes aura": {
+  "look": "vulture"
+ },
+ "Coragyps atratus": {
+  "look": "vulture"
+ },
+ "Gyps fulvus": {
+  "look": "griffon"
+ },
+ "Buteo platypterus": {
+  "look": "hawk"
+ },
+ "Buteo buteo": {
+  "look": "hawk"
+ },
+ "Circus aeruginosus": {
+  "look": "hawk"
+ },
+ "Circus pygargus": {
+  "look": "hawk"
+ },
+ "Pernis apivorus": {
+  "look": "hawk"
+ },
+ "Falco tinnunculus": {
+  "ko": "황조롱이",
+  "look": "hawk"
+ },
+ "Falco naumanni": {
+  "look": "hawk"
+ },
+ "Accipiter gentilis": {
+  "ko": "참매",
+  "look": "hawk"
+ },
+ "Milvus milvus": {
+  "look": "hawk"
+ },
+ "Milvus migrans": {
+  "ko": "솔개",
+  "look": "hawk"
+ },
+ "Asio otus": {
+  "ko": "칡부엉이",
+  "look": "hawk"
+ },
+ "Asio flammeus": {
+  "ko": "쇠부엉이",
+  "look": "hawk"
+ }
+}

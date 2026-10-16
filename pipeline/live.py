@@ -491,8 +491,18 @@ def main():
             "id", "name", "license_type", "is_test", "timestamp_last_deployed_location", "sensor_type_ids",
             "taxon_ids", "citation", "principal_investigator_name", "contact_person_name"]))
     except urllib.error.HTTPError as e:
-        print(f"Movebank refused the study list (HTTP {e.code}). Check MOVEBANK_USER and MOVEBANK_PASS.",
-              file=sys.stderr)
+        body = " ".join(e.read().decode("utf-8", "replace").split())[:300]
+        print(f"Movebank refused the study list (HTTP {e.code}): {body!r}", file=sys.stderr)
+        # the same address without the account: if this works, Movebank turned the account down, not the address
+        try:
+            with urllib.request.urlopen(urllib.request.Request(
+                    f"{args.api.rstrip('/')}/public/json?entity_type=study&study_id=2911040",
+                    headers={"User-Agent": "nabiya-live/1"}), timeout=60) as r:
+                print(f"A public request from here works (HTTP {r.status}), so check MOVEBANK_USER and MOVEBANK_PASS, "
+                      "and that the account is activated.", file=sys.stderr)
+        except Exception as e2:
+            print(f"A public request from here fails too ({e2!r}): Movebank may be refusing this address.",
+                  file=sys.stderr)
         return 1
     cands = []
     for r in rows:

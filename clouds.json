@@ -1,0 +1,9 @@
+{
+ "taken": "2026-10-17T21:00+00:00",
+ "files": {
+  "s": "clouds-2k.jpg",
+  "l": "clouds-4k.jpg"
+ },
+ "source": "NOAA/NESDIS GMGSI longwave infrared",
+ "key": "GMGSI_LW/2026/10/17/21/GLOBCOMPLIR_v3r0_blend_s202610172100000_e202610172109599_c202610172133438.nc"
+}

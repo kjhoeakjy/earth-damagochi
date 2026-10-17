@@ -1,0 +1,24 @@
+1007 studies open to the account, 21 with an open licence and fixes in the last 3 days
+study 1552820885 'MigraLion [ID_PROG 1190]': 6 animals (+0), 147 fixes
+study 2021208867 'Idaho Bunker Hill TUSWs': 2 animals (+0), 163 fixes
+study 481458 'Vultures Acopian Center USA GPS': 3 animals (+0), 67 fixes
+study 186178781 'Raptors NABU Moessingen public': 1 animals (+0), 1 fixes
+study 1605024900 'Forest Park Living Lab': 4 animals (+0), 1576 fixes
+study 2961927604 '(EBD) Lesser Kestrel (Falco naumanni) Spain, MERCURIO-SUMHAL': 2 animals (+0), 497 fixes
+study 42451582 'Long-billed Curlew Migration from the Intermountain West': 2 animals (+0), 1 fixes
+study 10449318 'LifeTrack White Stork Loburg': 1 animals (+0), 1 fixes
+study 28691134 'Broad-winged Hawk habitat use, range, and movement ecology': 1 animals (+0), 0 fixes
+study 24442409 'LifeTrack White Stork Bavaria': 3 animals (+0), 3 fixes
+study 2201086728 'European Honey Buzzard_Finland': 1 animals (+0), 0 fixes
+study 278258431 'Black-headed gull -  Chroicocephalus ridibundus -  PP382 - Forez France': 3 animals (+0), 21 fixes
+study 430263960 'Bald Eagle (Haliaeetus leucocephalus) in the Pacific Northwest': 1 animals (+0), 0 fixes
+  Orange 7/M: 1622 fixes, newest 20 h ago
+study 1233933180 'Multi-Scale Spatial and Movement Ecology of Gray Hawks in a Fragmented Subtropical Landscape': 5 animals (+1), 1630 fixes
+  early fixes: 1311 for 1 animals
+study 9103351859 'Carpathia vultures, return of griffon vultures in Romania': 5 animals (+0), 19 fixes
+study 1509697502 'Delmarva Wintering Waterfowl AIV and Poultry': licence terms not accepted, skipped
+study 1442516400 'Greater snow goose migration': licence terms not accepted, skipped
+study 1266784970 'Corvus corone [ID_PROG 883]': licence terms not accepted, skipped
+study 212096177 'LifeTrack White Stork Oberschwaben': licence terms not accepted, skipped
+loading geodata ...
+wrote live/live.json (539395 bytes): 56 animals, 40 listed (alive, moving, sending now); 59 API calls; 4 studies wait for licence acceptance; 0 studies failed; 35 species photos

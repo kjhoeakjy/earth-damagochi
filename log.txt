@@ -1,0 +1,25 @@
+1008 studies open to the account, 26 with an open licence and fixes in the last 3 days
+study 481458 'Vultures Acopian Center USA GPS': 4 animals (+0), 32 fixes
+study 42451582 'Long-billed Curlew Migration from the Intermountain West': 2 animals (+0), 0 fixes
+study 2201086728 'European Honey Buzzard_Finland': 2 animals (+0), 1 fixes
+study 1279240095 'Rehabilitated Birds AT': 4 animals (+0), 19 fixes
+study 173641633 'LifeTrack White Stork Vorarlberg': 3 animals (+0), 168 fixes
+study 10449318 'LifeTrack White Stork Loburg': 1 animals (+0), 1 fixes
+study 24442409 'LifeTrack White Stork Bavaria': 3 animals (+0), 186 fixes
+study 864730855 'NABU FTZ White Stork Hamburg 2024': 4 animals (+0), 3 fixes
+study 1258895879 'DELTATRACK - Herring gulls (Larus argentatus, Laridae) and lesser black-backed gulls (Larus fuscus, Laridae) breeding at Neeltje Jans (Netherlands)': 5 animals (+0), 133 fixes
+study 1552820885 'MigraLion [ID_PROG 1190]': 8 animals (+0), 199 fixes
+study 2021208867 'Idaho Bunker Hill TUSWs': 2 animals (+0), 23 fixes
+study 1605024900 'Forest Park Living Lab': 4 animals (+0), 1996 fixes
+study 430263960 'Bald Eagle (Haliaeetus leucocephalus) in the Pacific Northwest': 3 animals (+0), 1 fixes
+study 1393954358 'Cathartes aura MPIAB Cuba': 1 animals (+0), 1 fixes
+study 1509697502 'Delmarva Wintering Waterfowl AIV and Poultry': licence terms not accepted, skipped
+study 1266784970 'Corvus corone [ID_PROG 883]': licence terms not accepted, skipped
+study 1442516400 'Greater snow goose migration': licence terms not accepted, skipped
+study 7634109701 'Buteo SumasgutnerLab Austria 2025': licence terms not accepted, skipped
+study 1941203363 'South Africa vultures VfA MPIAB': licence terms not accepted, skipped
+study 76367850 'LifeTrack White Stork Rheinland-Pfalz': licence terms not accepted, skipped
+study 212096177 'LifeTrack White Stork Oberschwaben': licence terms not accepted, skipped
+study 4809963363 'NABU FTZ White Stork Hamburg 2019-2020': licence terms not accepted, skipped
+loading geodata ...
+wrote live/live.json (646869 bytes): 67 animals, 40 listed (alive, moving, sending now); 64 API calls; 8 studies wait for licence acceptance; 0 studies failed; 35 species photos

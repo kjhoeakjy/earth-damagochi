@@ -1,0 +1,13 @@
+# live-data
+
+나비야 나비야가 읽는 "지금 추적 중인 동물" 데이터예요. `.github/workflows/live.yml`이 여섯 시간마다 Movebank에서 새 GPS 위치를 받아 이 브랜치를 통째로 바꿔요.
+
+- `live.json`: 페이지가 읽는 동물 기록 (`data/animals.json`과 같은 형식). 경로는 최근 1년이고, 그보다 오래된 위치는 하루 하나씩 `early`에 있어요 (입양 후 첫 기록부터 재생할 때 써요)
+- `state.json`: 다음 실행이 이어 받는 상태 (동물별 경로, 연구, 이용 조건을 기다리는 연구)
+- `log.txt`: 마지막 실행 기록
+- `photos/`: 종마다 사진 한 장 (위키미디어 공용, 작가와 라이선스는 `live.json`의 `photos`)
+- `clouds-2k.jpg`, `clouds-4k.jpg`, `clouds.json`: 지구본의 구름. `.github/workflows/clouds.yml`이 매시간 NOAA 정지 기상위성 합성 적외선 사진(GMGSI)으로 다시 그려요 (`clouds.json`의 `taken`이 찍은 때)
+
+앱의 목록에는 사흘 안에 위치를 보냈고, 연구자 기록에 죽었다는 내용이 없고, 사흘 넘게 한자리에 머물지 않은 동물만 나와요 (`live.listed`). 목록에서 빠진 동물도 입양한 사람을 위해 30일 동안 파일에 남아요. 위급(CR)·위기(EN) 종은 밀렵 위험 때문에 넣지 않아요.
+
+데이터는 각 연구의 라이선스(CC0, CC BY, CC BY-NC)를 따르고, 출처는 `live.json`의 `sources`에 있어요. 사진은 각 파일의 라이선스를 따라요.
